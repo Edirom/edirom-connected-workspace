@@ -1,6 +1,6 @@
 import '../edirom-core-web-components/src/edirom-icon.js';
 
-console.log("WebSocket Connector Web Component loaded");
+console.log("Connected Workspace Web Component loaded");
 
 // Resolve the component's own script URL at definition time, so we can
 // locate vendor libraries relative to ourselves even when the component
@@ -807,7 +807,7 @@ const CONNECTION_STATE_COLORS = {
 };
 
 
-class EdiromWebSocketConnector extends HTMLElement {
+class EdiromConnectedWorkspace extends HTMLElement {
 
     constructor() {
         super();
@@ -849,8 +849,8 @@ class EdiromWebSocketConnector extends HTMLElement {
         if (window[globalName]) return Promise.resolve();
 
         const cacheKey = `_${globalName}LoadPromise`;
-        if (EdiromWebSocketConnector[cacheKey]) {
-            return EdiromWebSocketConnector[cacheKey];
+        if (EdiromConnectedWorkspace[cacheKey]) {
+            return EdiromConnectedWorkspace[cacheKey];
         }
 
         if (!_COMPONENT_BASE) {
@@ -862,7 +862,7 @@ class EdiromWebSocketConnector extends HTMLElement {
 
         const scriptSrc = new URL(relativePath, _COMPONENT_BASE).href;
 
-        EdiromWebSocketConnector[cacheKey] = new Promise((resolve, reject) => {
+        EdiromConnectedWorkspace[cacheKey] = new Promise((resolve, reject) => {
             const script = document.createElement('script');
             script.src = scriptSrc;
             script.onload = () => {
@@ -880,7 +880,7 @@ class EdiromWebSocketConnector extends HTMLElement {
             document.head.appendChild(script);
         });
 
-        return EdiromWebSocketConnector[cacheKey];
+        return EdiromConnectedWorkspace[cacheKey];
     }
 
     static get observedAttributes() {
@@ -892,7 +892,7 @@ class EdiromWebSocketConnector extends HTMLElement {
     // -------------------------------------------------------------------------
 
     connectedCallback() {
-        console.log('EdiromWebSocketConnector connected!');
+        console.log('EdiromConnectedWorkspace connected!');
         this._applyTemplate();
         this._setupElements();
         this._setupEventListeners();
@@ -904,25 +904,25 @@ class EdiromWebSocketConnector extends HTMLElement {
         // Load bowser from the component's own vendor directory (injected into
         // the host <head> if not already present). Once ready, initialise
         // browser-dependent state.
-        EdiromWebSocketConnector._ensureLibrary('bowser', 'vendor/bowser-es5.js')
+        EdiromConnectedWorkspace._ensureLibrary('bowser', 'vendor/bowser-es5.js')
             .then(() => {
                 this.browser = bowser.getParser(window.navigator.userAgent);
                 this._browserReady = true;
                 this.initDeviceName();
             })
             .catch((err) => {
-                console.warn('EdiromWebSocketConnector: bowser not available, using fallback.', err);
+                console.warn('EdiromConnectedWorkspace: bowser not available, using fallback.', err);
                 this.browser = null;
                 this.initDeviceName();
             });
 
         // Pre-load qrcode in the background — _renderQrCode checks for it at
         // render time and falls back to plain text if absent.
-        EdiromWebSocketConnector._ensureLibrary('qrcode', 'vendor/qrcode.js').catch(() => {});
+        EdiromConnectedWorkspace._ensureLibrary('qrcode', 'vendor/qrcode.js').catch(() => {});
     }
 
     disconnectedCallback() {
-        console.log('EdiromWebSocketConnector disconnected!');
+        console.log('EdiromConnectedWorkspace disconnected!');
         this.removeEventListener('back-request', this._handleBackRequest);
         document.removeEventListener('keydown', this._handleDocumentKeydown);
         document.removeEventListener('click', this._handleDocumentClick, true);
@@ -1127,7 +1127,7 @@ class EdiromWebSocketConnector extends HTMLElement {
 
     _buildInitialConnection = (sessionId = null) => {
         if (!this.wsUrl) {
-            console.warn('EdiromWebSocketConnector: no ws-url attribute set, skipping connection.');
+            console.warn('EdiromConnectedWorkspace: no ws-url attribute set, skipping connection.');
             return;
         }
 
@@ -1147,12 +1147,12 @@ class EdiromWebSocketConnector extends HTMLElement {
         this._webSocket = new WebSocket(url);
 
         this._webSocket.onopen = () => {
-            console.log('EdiromWebSocketConnector: connection opened.');
+            console.log('EdiromConnectedWorkspace: connection opened.');
             this._setConnectionState('connected');
         };
 
         this._webSocket.onclose = () => {
-            console.log('EdiromWebSocketConnector: connection closed.');
+            console.log('EdiromConnectedWorkspace: connection closed.');
             const wasInSession = this._connectionState === 'session';
             const reason = this._disconnectReason;
             this._disconnectReason = null;
@@ -1198,14 +1198,14 @@ class EdiromWebSocketConnector extends HTMLElement {
             try {
                 dataJson = JSON.parse(event.data);
             } catch (e) {
-                console.error('EdiromWebSocketConnector: could not parse message.', e);
+                console.error('EdiromConnectedWorkspace: could not parse message.', e);
                 return;
             }
             this._handleMessage(dataJson);
         };
 
         this._webSocket.onerror = (error) => {
-            console.error('EdiromWebSocketConnector: connection error.', error);
+            console.error('EdiromConnectedWorkspace: connection error.', error);
             this._setConnectionState('failed');
             this._showNotification('Verbindung konnte nicht hergestellt werden.', 'red');
         };
@@ -1252,12 +1252,12 @@ class EdiromWebSocketConnector extends HTMLElement {
         if (payload !== null && payload !== undefined) message.payload = payload;
         if (Array.isArray(clientTargets)) message.client_targets = clientTargets;
         this._webSocket.send(JSON.stringify(message));
-        console.log('EdiromWebSocketConnector: message sent', message);
+        console.log('EdiromConnectedWorkspace: message sent', message);
     }
 
 
     _handleMessage = (dataJson) => {
-        console.log('EdiromWebSocketConnector: received message', dataJson);
+        console.log('EdiromConnectedWorkspace: received message', dataJson);
         if (dataJson.response === 'sessionJoined') {
             this._clientId = dataJson.clientId;
             this._sessionId = dataJson.sessionId;
@@ -1305,13 +1305,13 @@ class EdiromWebSocketConnector extends HTMLElement {
                 composed: true
             }));
         } else if (dataJson.response === 'clientConnected') {
-            console.log('EdiromWebSocketConnector: client connected.');
+            console.log('EdiromConnectedWorkspace: client connected.');
             this._sessionData = dataJson.sessionData;
             this._updateMembersList();
             const connectedName = dataJson.clientData?.metadata?.name ?? 'Unbekanntes Gerät';
             this._showNotification(`"${connectedName}" ist der Sitzung beigetreten.`, 'green');
         } else if (dataJson.response === 'clientDisconnected') {
-            console.log('EdiromWebSocketConnector: client disconnected.');
+            console.log('EdiromConnectedWorkspace: client disconnected.');
             this._sessionData = dataJson.sessionData;
             this._updateMembersList();
             const disconnectedName = dataJson.clientData?.metadata?.name ?? 'Unbekanntes Gerät';
@@ -1506,7 +1506,7 @@ class EdiromWebSocketConnector extends HTMLElement {
             case 'joinPage': pageEl = this._buildJoinPage(); break;
             case 'failedConnectionPage': pageEl = this._buildFailedConnectionPage(); break;
             default:
-                console.warn(`EdiromWebSocketConnector: unknown page "${pageName}"`);
+                console.warn(`EdiromConnectedWorkspace: unknown page "${pageName}"`);
                 return;
         }
         this._sessionContent.appendChild(pageEl);
@@ -1816,7 +1816,7 @@ class EdiromWebSocketConnector extends HTMLElement {
                 copyTooltip.classList.add('visible');
                 tooltipTimer = setTimeout(() => copyTooltip.classList.remove('visible'), 2000);
             }).catch(err => {
-                console.warn('EdiromWebSocketConnector: clipboard write failed.', err);
+                console.warn('EdiromConnectedWorkspace: clipboard write failed.', err);
             });
         });
 
@@ -1835,7 +1835,7 @@ class EdiromWebSocketConnector extends HTMLElement {
             const currentUrl = urlText.textContent;
             navigator.share({ url: currentUrl }).catch(err => {
                 if (err.name !== 'AbortError') {
-                    console.warn('EdiromWebSocketConnector: share failed.', err);
+                    console.warn('EdiromConnectedWorkspace: share failed.', err);
                 }
             });
         });
@@ -2065,14 +2065,14 @@ class EdiromWebSocketConnector extends HTMLElement {
     }
 
     initDeviceName = () => {
-        console.log('EdiromWebSocketConnector: initializing device name...');
+        console.log('EdiromConnectedWorkspace: initializing device name...');
         let deviceName = "";
         deviceName = localStorage.getItem('workspace-device-name');
         if (!deviceName) {
             deviceName = this.generateDeviceName();
         }
         this.deviceName = deviceName;
-        console.log('EdiromWebSocketConnector: initialized device name as', this.deviceName);
+        console.log('EdiromConnectedWorkspace: initialized device name as', this.deviceName);
         this.onDeviceNameChange();
     }
 
@@ -2088,7 +2088,7 @@ class EdiromWebSocketConnector extends HTMLElement {
     }
 }
 
-if (!customElements.get('edirom-web-socket-connector')) {
-    customElements.define('edirom-web-socket-connector', EdiromWebSocketConnector);
+if (!customElements.get('edirom-connected-workspace')) {
+    customElements.define('edirom-connected-workspace', EdiromConnectedWorkspace);
 }
 

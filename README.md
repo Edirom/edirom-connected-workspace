@@ -1,20 +1,20 @@
-# Edirom Web Socket Connector
+# Edirom Connected Workspace
 
 Web Component for connecting multiple devices in a shared session via WebSocket. Supports session creation, joining via session ID or QR code, device management, and cross-device messaging.
 
 ## Usage
 
 ```html
-<script defer src="path/to/edirom-web-socket-connector/edirom-web-socket-connector.js" type="module"></script>
+<script defer src="path/to/edirom-connected-workspace/edirom-connected-workspace.js" type="module"></script>
 ```
 
 ```html
-<edirom-web-socket-connector
+<edirom-connected-workspace
   ws-url="wss://example.com/ws"
   session="ABC123"
   invite-url="https://example.com/join/"
 >
-</edirom-web-socket-connector>
+</edirom-connected-workspace>
 ```
 
 ## Attributes
@@ -45,7 +45,7 @@ The component is themed via CSS custom properties. Override them on the element 
 To theme only this component, set the variables on the element:
 
 ```css
-edirom-web-socket-connector {
+edirom-connected-workspace {
   --primary-color: #232a44;
   --secondary-color: #e9d9af;
   --tertiary-color: #faf6f0;
