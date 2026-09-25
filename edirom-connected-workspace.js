@@ -775,7 +775,7 @@ const componentTemplate = `
     }
 </style>
 <div id="ws-container">
-    <button id="ws-button" aria-label="WebSocket Verbindung">
+    <button id="ws-button" aria-label="Connected Workspace">
         <edirom-icon name="hub" size="fill"></edirom-icon>
     </button>
     <div id="session-popover" popover="manual">
