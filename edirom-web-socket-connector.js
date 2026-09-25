@@ -372,6 +372,35 @@ const componentTemplate = `
         min-height: 100%;
     }
 
+    .page-failed-connection {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        padding-top: 12px;
+    }
+
+    .connection-error-card {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 16px 18px;
+        border-radius: 15px;
+        background: #e05353;
+        color: #fff;
+    }
+
+    .connection-error-card edirom-icon {
+        flex-shrink: 0;
+        width: 2rem;
+        height: 2rem;
+    }
+
+    .connection-error-card p {
+        margin: 0;
+        font-size: 0.95rem;
+        line-height: 1.4;
+    }
+
     .session-info-footer {
         margin-top: auto;
         padding-top: 40px;
@@ -773,7 +802,7 @@ const componentTemplate = `
 const CONNECTION_STATE_COLORS = {
     failed: 'red',
     connected: '#ed9418',
-    disconnected: 'var(--_ws-quaternary)',
+    checking: 'var(--_ws-quaternary)',
     session: '#83c702',
 };
 
@@ -783,7 +812,7 @@ class EdiromWebSocketConnector extends HTMLElement {
     constructor() {
         super();
         this.shadow = this.attachShadow({ mode: 'open', delegatesFocus: true });
-        this._connectionState = 'disconnected';
+        this._connectionState = 'checking';
         this._webSocket = null;
         this._clientId = null;
         this._sessionId = null;
@@ -867,8 +896,8 @@ class EdiromWebSocketConnector extends HTMLElement {
         this._applyTemplate();
         this._setupElements();
         this._setupEventListeners();
-        this._setConnectionState('disconnected');
-        // this._connect();
+        this._setConnectionState('checking');
+        this._initialCheckPromise = this._runAvailabilityCheck();
         this.setAttribute('data-handles-back-request', '');
         this.addEventListener('back-request', this._handleBackRequest);
 
@@ -911,7 +940,7 @@ class EdiromWebSocketConnector extends HTMLElement {
         } else if (name === 'session') {
             if (newValue) {
                 this._autoJoined = true;
-                this._joinSession(newValue);
+                Promise.resolve(this._initialCheckPromise).then(() => this._joinSession(newValue));
             }
         } else if (name === 'invite-url') {
             this._inviteUrl = newValue;
@@ -999,10 +1028,15 @@ class EdiromWebSocketConnector extends HTMLElement {
         this._sessionPopover.style.setProperty('--popover-origin-x', `${btnCenterX - popoverLeft}px`);
         this._sessionPopover.style.setProperty('--popover-origin-y', `${btnCenterY - popoverTop}px`);
         if (this._currentPageName === null) {
-            const startPage = this._connectionState === 'session' ? 'sessionInformation' : 'initialPage';
-            this._switchPage(startPage, { pushHistory: false });
+            this._switchPage(this._startPageForState(), { pushHistory: false });
         }
         this._sessionPopover.showPopover();
+    }
+
+    _startPageForState = () => {
+        if (this._connectionState === 'session') return 'sessionInformation';
+        if (this._connectionState === 'failed') return 'failedConnectionPage';
+        return 'initialPage';
     }
 
     _closePopover = () => {
@@ -1022,7 +1056,7 @@ class EdiromWebSocketConnector extends HTMLElement {
     // -------------------------------------------------------------------------
 
     _setConnectionState = (state) => {
-        if (["disconnected", "connected", "failed", "session"].includes(state)) {
+        if (["checking", "connected", "failed", "session"].includes(state)) {
             this._connectionState = state;
             this._updateStatusIcon();
         }
@@ -1037,6 +1071,59 @@ class EdiromWebSocketConnector extends HTMLElement {
     // -------------------------------------------------------------------------
     // WebSocket
     // -------------------------------------------------------------------------
+
+    /**
+     * Probes whether the WebSocket server is reachable via a dedicated
+     * `?ping=true` handshake. Does not create or join a session.
+     * @returns {Promise<boolean>}
+     */
+    _checkServerAvailability = () => {
+        return new Promise((resolve) => {
+            if (!this.wsUrl) { resolve(false); return; }
+            const ws = new WebSocket(`${this.wsUrl}?ping=true`);
+            let settled = false;
+            const finish = (result) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timeoutId);
+                ws.onopen = ws.onmessage = ws.onerror = ws.onclose = null;
+                if (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN) ws.close();
+                resolve(result);
+            };
+            const timeoutId = setTimeout(() => finish(false), 5000);
+            ws.onmessage = (event) => {
+                try {
+                    if (JSON.parse(event.data)?.response === 'pong') finish(true);
+                } catch (_) { /* ignore */ }
+            };
+            ws.onerror = () => finish(false);
+            ws.onclose = () => finish(false);
+        });
+    }
+
+    /**
+     * Central entry point for the pre-session availability gate: runs the
+     * ping check, updates connection state/icon color, keeps the currently
+     * displayed page in sync, and (only for an explicit retry) shows the
+     * result as a toast.
+     * @param {{isRetry?: boolean}} [options]
+     * @returns {Promise<boolean>}
+     */
+    _runAvailabilityCheck = async ({ isRetry = false } = {}) => {
+        const available = await this._checkServerAvailability();
+        this._setConnectionState(available ? 'connected' : 'failed');
+        this._currentPageName = null;
+        if (this._sessionPopover?.matches(':popover-open')) {
+            this._switchPage(this._startPageForState(), { pushHistory: false });
+        }
+        if (isRetry) {
+            this._showNotification(
+                available ? 'Verbindung zum Server erfolgreich.' : 'Verbindung konnte nicht hergestellt werden.',
+                available ? 'green' : 'red'
+            );
+        }
+        return available;
+    }
 
     _buildInitialConnection = (sessionId = null) => {
         if (!this.wsUrl) {
@@ -1076,7 +1163,18 @@ class EdiromWebSocketConnector extends HTMLElement {
                 else if (reason === null) this._showNotification('Verbindung unterbrochen.', 'red');
             }
             if (this._connectionState !== 'failed') {
-                this._setConnectionState('disconnected');
+                // A closed session socket doesn't by itself tell us whether the
+                // server is still reachable (we may have just left/dissolved a
+                // session, or the server rejected a join) — so re-derive the
+                // state from a fresh availability check instead of guessing.
+                // 'checking' is only a transient placeholder while that
+                // check is in flight; it never lingers as a final state.
+                this._setConnectionState('checking');
+                this._checkServerAvailability().then((available) => {
+                    if (this._connectionState !== 'session') {
+                        this._setConnectionState(available ? 'connected' : 'failed');
+                    }
+                });
             }
             const joinedFromJoinPage = !!this._joinError;
             this._joinError = null;
@@ -1406,6 +1504,7 @@ class EdiromWebSocketConnector extends HTMLElement {
             case 'sessionInformation': pageEl = this._buildSessionInformationPage(); break;
             case 'invitePage': pageEl = this._buildInvitePage(); break;
             case 'joinPage': pageEl = this._buildJoinPage(); break;
+            case 'failedConnectionPage': pageEl = this._buildFailedConnectionPage(); break;
             default:
                 console.warn(`EdiromWebSocketConnector: unknown page "${pageName}"`);
                 return;
@@ -1432,6 +1531,38 @@ class EdiromWebSocketConnector extends HTMLElement {
     // -------------------------------------------------------------------------
     // Page Builders
     // -------------------------------------------------------------------------
+
+    _buildFailedConnectionPage = () => {
+        const page = document.createElement('div');
+        page.className = 'page-failed-connection';
+
+        const card = document.createElement('div');
+        card.className = 'connection-error-card';
+        const cardIcon = document.createElement('edirom-icon');
+        cardIcon.setAttribute('name', 'wifi_off');
+        cardIcon.setAttribute('size', 'fill');
+        const cardText = document.createElement('p');
+        cardText.textContent = 'Die Verbindung zum Server konnte nicht hergestellt werden.';
+        card.appendChild(cardIcon);
+        card.appendChild(cardText);
+        page.appendChild(card);
+
+        const retryButton = document.createElement('button');
+        retryButton.className = 'add-device-button';
+        const retryIcon = document.createElement('edirom-icon');
+        retryIcon.setAttribute('name', 'refresh');
+        retryIcon.setAttribute('size', 'fill');
+        const retryLabel = document.createElement('span');
+        retryLabel.textContent = 'Erneut versuchen';
+        retryButton.appendChild(retryIcon);
+        retryButton.appendChild(retryLabel);
+        retryButton.addEventListener('click', () => {
+            this._runAvailabilityCheck({ isRetry: true });
+        });
+        page.appendChild(retryButton);
+
+        return page;
+    }
 
     _buildInitialPage = () => {
         const page = document.createElement('div');
