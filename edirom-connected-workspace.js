@@ -1046,6 +1046,8 @@ class EdiromConnectedWorkspace extends HTMLElement {
                 this._sessionPopover.removeEventListener('transitionend', handler);
                 this._sessionPopover.classList.remove('closing');
                 this._sessionPopover.hidePopover();
+                this._pageHistory = [];
+                this._currentPageName = null;
             }
         };
         this._sessionPopover.addEventListener('transitionend', handler);
