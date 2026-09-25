@@ -1539,7 +1539,7 @@ class EdiromConnectedWorkspace extends HTMLElement {
         const card = document.createElement('div');
         card.className = 'connection-error-card';
         const cardIcon = document.createElement('edirom-icon');
-        cardIcon.setAttribute('name', 'wifi_off');
+        cardIcon.setAttribute('name', 'cloud_off');
         cardIcon.setAttribute('size', 'fill');
         const cardText = document.createElement('p');
         cardText.textContent = 'Die Verbindung zum Server konnte nicht hergestellt werden.';
