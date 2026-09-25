@@ -827,6 +827,7 @@ class EdiromConnectedWorkspace extends HTMLElement {
         this._disconnectReason = null;
         this._isCreatingSession = false;
         this._browserReady = false;
+        this._pendingAutoJoinSessionId = null;
     }
 
     // -------------------------------------------------------------------------
@@ -898,6 +899,7 @@ class EdiromConnectedWorkspace extends HTMLElement {
         this._setupEventListeners();
         this._setConnectionState('checking');
         this._initialCheckPromise = this._runAvailabilityCheck();
+        this._tryAutoJoin();
         this.setAttribute('data-handles-back-request', '');
         this.addEventListener('back-request', this._handleBackRequest);
 
@@ -909,11 +911,14 @@ class EdiromConnectedWorkspace extends HTMLElement {
                 this.browser = bowser.getParser(window.navigator.userAgent);
                 this._browserReady = true;
                 this.initDeviceName();
+                this._tryAutoJoin();
             })
             .catch((err) => {
                 console.warn('EdiromConnectedWorkspace: bowser not available, using fallback.', err);
                 this.browser = null;
+                this._browserReady = true;
                 this.initDeviceName();
+                this._tryAutoJoin();
             });
 
         // Pre-load qrcode in the background — _renderQrCode checks for it at
@@ -939,8 +944,8 @@ class EdiromConnectedWorkspace extends HTMLElement {
             this.wsUrl = newValue;
         } else if (name === 'session') {
             if (newValue) {
-                this._autoJoined = true;
-                Promise.resolve(this._initialCheckPromise).then(() => this._joinSession(newValue));
+                this._pendingAutoJoinSessionId = newValue;
+                this._tryAutoJoin();
             }
         } else if (name === 'invite-url') {
             this._inviteUrl = newValue;
@@ -1223,6 +1228,23 @@ class EdiromConnectedWorkspace extends HTMLElement {
         this._buildInitialConnection(sessionId.trim().toUpperCase());
     }
 
+    /**
+     * Attempts to auto-join a session requested via the "session" attribute.
+     * Called from multiple points (attribute change, connectedCallback, bowser
+     * load) since it can be set before connectedCallback has run (element
+     * upgrade order puts attributeChangedCallback first) and must not fire
+     * until both the availability check has started and the device name has
+     * been initialised — otherwise the client connects with an empty name.
+     */
+    _tryAutoJoin = () => {
+        if (!this._pendingAutoJoinSessionId) return;
+        if (!this._initialCheckPromise || !this._browserReady) return;
+        const sessionId = this._pendingAutoJoinSessionId;
+        this._pendingAutoJoinSessionId = null;
+        this._autoJoined = true;
+        this._initialCheckPromise.then(() => this._joinSession(sessionId));
+    }
+
     _sendRemoveClient = (clientId) => {
         if (this._webSocket?.readyState === WebSocket.OPEN) {
             this._webSocket.send(JSON.stringify({ message: 'removeClient', clientId }));
@@ -1344,9 +1366,16 @@ class EdiromConnectedWorkspace extends HTMLElement {
     }
 
     _getFullInviteUrl = () => {
-        if (this._inviteUrl && this._sessionId) return this._inviteUrl + this._sessionId;
-        if (this._sessionId) return this._sessionId;
-        return null;
+        if (!this._sessionId) return null;
+        if (!this._inviteUrl) return this._sessionId;
+        try {
+            const url = new URL(this._inviteUrl, window.location.href);
+            url.searchParams.set('session', this._sessionId);
+            return url.toString();
+        } catch (e) {
+            console.warn('EdiromConnectedWorkspace: invalid invite-url, falling back to session id.', e);
+            return this._sessionId;
+        }
     }
 
     _updateMembersList = () => {
