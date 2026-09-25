@@ -41,8 +41,8 @@ const componentTemplate = `
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 32px;
-        height: 32px;
+        width: 100%;
+        height: 100%;
         padding: 0;
         border: none;
         border-radius: 50%;
