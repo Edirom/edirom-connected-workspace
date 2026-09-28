@@ -704,44 +704,6 @@ const componentTemplate = `
         margin: 0 0 8px;
     }
 
-    .separator-row {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        margin: 20px 0;
-        color: var(--_ws-primary);
-        opacity: 0.6;
-    }
-
-    .separator-line {
-        flex: 1;
-        height: 1px;
-        background: currentColor;
-    }
-
-    .separator-text {
-        font-size: 0.85rem;
-        font-weight: 600;
-        letter-spacing: 0.05em;
-        user-select: none;
-        -webkit-user-select: none;
-    }
-
-    .qr-scanner-placeholder {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        min-height: 140px;
-        border: 2px dashed var(--_ws-secondary);
-        border-radius: 10px;
-        color: var(--_ws-primary);
-        opacity: 0.5;
-        font-size: 0.9rem;
-        text-align: center;
-        padding: 20px;
-        box-sizing: border-box;
-    }
-
     #back-button {
         display: flex;
         align-items: center;
@@ -2106,27 +2068,6 @@ class EdiromConnectedWorkspace extends HTMLElement {
         inputRow.appendChild(inputLabel);
         inputRow.appendChild(input);
         page.appendChild(inputRow);
-
-        // Separator row
-        const separatorRow = document.createElement('div');
-        separatorRow.className = 'separator-row';
-        const lineLeft = document.createElement('div');
-        lineLeft.className = 'separator-line';
-        const separatorText = document.createElement('span');
-        separatorText.className = 'separator-text';
-        separatorText.textContent = 'ODER';
-        const lineRight = document.createElement('div');
-        lineRight.className = 'separator-line';
-        separatorRow.appendChild(lineLeft);
-        separatorRow.appendChild(separatorText);
-        separatorRow.appendChild(lineRight);
-        page.appendChild(separatorRow);
-
-        // QR scanner placeholder
-        const scannerPlaceholder = document.createElement('div');
-        scannerPlaceholder.className = 'qr-scanner-placeholder';
-        scannerPlaceholder.textContent = 'QR-Code scannen';
-        page.appendChild(scannerPlaceholder);
 
         return page;
     }
