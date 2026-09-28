@@ -828,6 +828,15 @@ class EdiromConnectedWorkspace extends HTMLElement {
         this._isCreatingSession = false;
         this._browserReady = false;
         this._pendingAutoJoinSessionId = null;
+
+        // State sync (see "Session State" section below). This is protocol
+        // bookkeeping only — the actual values live in the host app.
+        this._stateHandlers = [];   // { keys, get, apply, queue }
+        this._knownState = {};      // what the server currently holds for this client
+        this._pendingSync = {};     // keys received via syncState that no handler owns yet
+        this._applyingKeys = new Set(); // keys whose remote apply is in flight
+        this._stateReady = false;   // false until the initial state exchange finished
+        this._stateEpoch = 0;       // bumped whenever a session starts/ends; invalidates async work
     }
 
     // -------------------------------------------------------------------------
@@ -936,6 +945,7 @@ class EdiromConnectedWorkspace extends HTMLElement {
             this._webSocket.close();
             this._webSocket = null;
         }
+        this._resetStateSync();
     }
 
     attributeChangedCallback(name, oldValue, newValue) {
@@ -1146,6 +1156,7 @@ class EdiromConnectedWorkspace extends HTMLElement {
         this._clientId = null;
         this._sessionId = null;
         this._sessionData = null;
+        this._resetStateSync();
 
         const clientName = encodeURIComponent(this.deviceName);
         const deviceType = encodeURIComponent(this.getDeviceType());
@@ -1188,6 +1199,7 @@ class EdiromConnectedWorkspace extends HTMLElement {
             this._sessionId = null;
             this._clientId = null;
             this._sessionData = null;
+            this._resetStateSync();
             this._pageHistory = [];
             this._currentPageName = null;
             if (this._sessionPopover?.matches(':popover-open')) {
@@ -1295,17 +1307,10 @@ class EdiromConnectedWorkspace extends HTMLElement {
                 this._autoJoined = false;
                 this._openPopover();
             }
-            if (dataJson.lastRelayed?.type) {
-                this.dispatchEvent(new CustomEvent('received-message', {
-                    detail: dataJson.lastRelayed,
-                    bubbles: true,
-                    composed: true
-                }));
-            }
+            this._startStateSync(this._isCreatingSession);
             this.dispatchEvent(new CustomEvent('session-joined', {
                 detail: {
                     sessionId: dataJson.sessionId,
-                    hasLastRelayed: !!dataJson.lastRelayed,
                     isCreatingSession: this._isCreatingSession
                 },
                 bubbles: true,
@@ -1322,6 +1327,10 @@ class EdiromConnectedWorkspace extends HTMLElement {
             this._setSessionId(dataJson.sessionId);
         } else if (dataJson.clientId && this._clientId === null) {
             this._clientId = dataJson.clientId;
+        } else if (dataJson.type === 'syncState') {
+            this._handleSyncState(dataJson.payload?.patch).catch((error) => {
+                console.error('EdiromConnectedWorkspace: applying syncState failed.', error);
+            });
         } else if (dataJson.message || dataJson.type) {
             this.dispatchEvent(new CustomEvent('received-message', {
                 detail: dataJson,
@@ -1347,6 +1356,189 @@ class EdiromConnectedWorkspace extends HTMLElement {
             this._sessionData = dataJson.sessionData;
             this._updateMembersList();
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // Session State
+    //
+    // The server keeps a `state` per client and orchestrates it:
+    //   updateState  (this client → server)  "my state changed"
+    //   syncState    (server → this client)  "move to this state"
+    //
+    // The host app owns the actual values. It registers a handler that can
+    // read them (`get`) and apply remote changes (`apply`), and calls
+    // `updateState` whenever a value changes locally.
+    //
+    // Echo suppression is compare-based: `_knownState` mirrors what the server
+    // holds for this client, and `updateState` drops values equal to it. A
+    // received syncState is written into `_knownState` *before* it is applied,
+    // so the change notifications the app fires while applying are no-ops.
+    // If the app couldn't reach the requested state, the actual values are
+    // reported once with cause "syncResult" (the server never fans those out).
+    // -------------------------------------------------------------------------
+
+    /**
+     * Registers the host app's handler for a group of state keys.
+     * A syncState that arrived before its handler existed is applied now.
+     *
+     * @param {Object} handler
+     * @param {string[]} handler.keys - The state keys this handler owns
+     * @param {() => Object|Promise<Object>} handler.get - Returns the current
+     *   values of `keys` from the app's own store
+     * @param {(patch: Object) => void|Promise<void>} handler.apply - Moves the
+     *   app to the values in `patch` (a subset of `keys`). May be async; it
+     *   should resolve when the app has settled.
+     * @returns {() => void} Function that unregisters the handler
+     */
+    registerStateHandler = (handler) => {
+        if (!handler || !Array.isArray(handler.keys) || typeof handler.get !== 'function' || typeof handler.apply !== 'function') {
+            throw new Error('EdiromConnectedWorkspace: a state handler needs keys, get() and apply().');
+        }
+        const entry = { keys: [...handler.keys], get: handler.get, apply: handler.apply, queue: Promise.resolve() };
+        this._stateHandlers.push(entry);
+        this._activateStateHandler(entry).catch((error) => {
+            console.error('EdiromConnectedWorkspace: activating state handler failed.', error);
+        });
+        return () => {
+            this._stateHandlers = this._stateHandlers.filter(h => h !== entry);
+        };
+    }
+
+    /**
+     * Tells the server that (part of) this client's state changed locally.
+     * Call it whenever the app reaches a settled new value. Values the server
+     * already knows are dropped, so calling it generously is harmless.
+     * Ignored outside a session and while the initial state exchange runs
+     * (the current state is reported automatically once that has finished).
+     *
+     * @param {Object} patch - e.g. `{ connection: "xyz" }`; `null` is a valid value
+     */
+    updateState = (patch) => {
+        if (!patch || typeof patch !== 'object') return;
+        if (this._connectionState !== 'session' || !this._stateReady) return;
+        const changed = {};
+        for (const [key, value] of Object.entries(patch)) {
+            if (value === undefined) continue;
+            if (this._applyingKeys.has(key)) continue; // outcome is reconciled after apply
+            // Strict equality is enough for strings/null. Object-valued keys
+            // (e.g. open windows) will need a deep-equal here.
+            if (this._knownState[key] !== value) changed[key] = value;
+        }
+        if (Object.keys(changed).length === 0) return;
+        Object.assign(this._knownState, changed);
+        this.sendMessage('updateState', { patch: changed, cause: 'user' });
+    }
+
+    _resetStateSync = () => {
+        this._stateEpoch++;
+        this._knownState = {};
+        this._pendingSync = {};
+        this._applyingKeys.clear();
+        this._stateReady = false;
+    }
+
+    /**
+     * Called when the session was joined. A creator is the source of truth and
+     * reports its state right away. A joiner waits for the server's initial
+     * syncState, which the server always sends.
+     */
+    _startStateSync = (isCreator) => {
+        this._resetStateSync();
+        if (!isCreator) return;
+        this._stateReady = true;
+        this._reportState().catch((error) => {
+            console.error('EdiromConnectedWorkspace: reporting initial state failed.', error);
+        });
+    }
+
+    async _readHandlerState(handler) {
+        const values = (await handler.get()) ?? {};
+        return Object.fromEntries(handler.keys.filter(key => values[key] !== undefined).map(key => [key, values[key]]));
+    }
+
+    /** Reports the current values of all handlers (only what differs from `_knownState` is sent). */
+    _reportState = async () => {
+        const epoch = this._stateEpoch;
+        const full = {};
+        for (const handler of [...this._stateHandlers]) {
+            Object.assign(full, await this._readHandlerState(handler));
+        }
+        if (epoch !== this._stateEpoch) return;
+        this.updateState(full);
+    }
+
+    _handleSyncState = async (patch) => {
+        if (!patch || typeof patch !== 'object') patch = {};
+        const epoch = this._stateEpoch;
+        // Before applying: notifications fired during the apply then equal the known state.
+        Object.assign(this._knownState, patch);
+
+        const perHandler = new Map();
+        for (const [key, value] of Object.entries(patch)) {
+            const handler = this._stateHandlers.find(h => h.keys.includes(key));
+            if (!handler) {
+                this._pendingSync[key] = value; // applied once a handler registers
+                continue;
+            }
+            if (!perHandler.has(handler)) perHandler.set(handler, {});
+            perHandler.get(handler)[key] = value;
+        }
+        await Promise.all([...perHandler].map(([handler, subset]) => this._enqueueApply(handler, subset)));
+
+        if (epoch !== this._stateEpoch || this._stateReady) return;
+        // First syncState of a joined session is done: report whatever the server didn't know about.
+        this._stateReady = true;
+        await this._reportState();
+    }
+
+    /** Applies `subset` through the handler, one apply at a time per handler. */
+    _enqueueApply = (handler, subset) => {
+        handler.queue = handler.queue.then(async () => {
+            const epoch = this._stateEpoch;
+            const keys = Object.keys(subset);
+            keys.forEach(key => this._applyingKeys.add(key));
+            try {
+                await handler.apply({ ...subset });
+            } catch (error) {
+                console.error('EdiromConnectedWorkspace: state handler apply() failed.', error);
+            } finally {
+                keys.forEach(key => this._applyingKeys.delete(key));
+            }
+            if (epoch !== this._stateEpoch) return;
+            await this._reconcile(handler, subset);
+        }).catch((error) => {
+            console.error('EdiromConnectedWorkspace: state apply queue failed.', error);
+        });
+        return handler.queue;
+    }
+
+    /** Reports back values the app could not reach (cause "syncResult", never fanned out by the server). */
+    _reconcile = async (handler, asked) => {
+        const actual = await this._readHandlerState(handler);
+        const mismatch = {};
+        for (const [key, value] of Object.entries(asked)) {
+            if (key in actual && actual[key] !== value) mismatch[key] = actual[key];
+        }
+        if (Object.keys(mismatch).length === 0) return;
+        Object.assign(this._knownState, mismatch);
+        this.sendMessage('updateState', { patch: mismatch, cause: 'syncResult' });
+    }
+
+    /** Applies syncState keys that arrived before this handler existed, then reports the rest of its state. */
+    _activateStateHandler = async (handler) => {
+        const epoch = this._stateEpoch;
+        const pending = {};
+        for (const key of handler.keys) {
+            if (key in this._pendingSync) {
+                pending[key] = this._pendingSync[key];
+                delete this._pendingSync[key];
+            }
+        }
+        if (Object.keys(pending).length > 0) {
+            await this._enqueueApply(handler, pending);
+        }
+        if (epoch !== this._stateEpoch || !this._stateReady) return;
+        this.updateState(await this._readHandlerState(handler));
     }
 
     // -------------------------------------------------------------------------
