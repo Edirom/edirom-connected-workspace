@@ -91,6 +91,7 @@ The WebSocket upgrade URL carries these query parameters (see `CONNECT_PARAMS`, 
 | `sessionDataUpdated` | `{ response, sessionData }` | another member renamed itself |
 | `clientRemoved` | `{ response }` | this client was kicked; the socket is closed right after |
 | `sessionDissolved` | `{ response }` | the session ended; the socket is closed right after |
+| `serverShutdown` | `{ response }` | the server process itself is shutting down (restart/deploy, or a last-resort crash recovery); the socket is closed right after |
 | `error` | `{ response, reason }` | `reason` is one of `ERROR_REASONS` (currently just `sessionNotFound`); the socket is closed right after |
 | `pong` | `{ response }` | reply to a `ping=true` health check |
 | `syncState` | `{ type, payload: { patch } }` | a shared-state change (see "Session state" above). Always sent once to a joiner, possibly with an empty `patch` |

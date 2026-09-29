@@ -1142,21 +1142,29 @@ class EdiromConnectedWorkspace extends HTMLElement {
                 if (reason === 'dissolved') this._showNotification('Die Sitzung wurde aufgelöst.', 'yellow');
                 else if (reason === 'removed') this._showNotification('Dein Gerät wurde aus der Sitzung entfernt.', 'yellow');
                 else if (reason === 'left') this._showNotification('Du hast die Sitzung verlassen.', 'yellow');
+                else if (reason === 'serverShutdown') this._showNotification('Der Server für die Vernetzte Arbeitsumgebung steht kurzfristig nicht zur Verfügung.', 'red');
                 else if (reason === null) this._showNotification('Verbindung unterbrochen.', 'red');
             }
             if (this._connectionState !== 'failed') {
-                // A closed session socket doesn't by itself tell us whether the
-                // server is still reachable (we may have just left/dissolved a
-                // session, or the server rejected a join) — so re-derive the
-                // state from a fresh availability check instead of guessing.
-                // 'checking' is only a transient placeholder while that
-                // check is in flight; it never lingers as a final state.
-                this._setConnectionState('checking');
-                this._checkServerAvailability().then((available) => {
-                    if (this._connectionState !== 'session') {
-                        this._setConnectionState(available ? 'connected' : 'failed');
-                    }
-                });
+                if (reason === 'serverShutdown') {
+                    // The server just told us directly that it's going away —
+                    // trust that over a fresh availability check, which could
+                    // briefly still succeed while the process finishes exiting.
+                    this._setConnectionState('failed');
+                } else {
+                    // A closed session socket doesn't by itself tell us whether the
+                    // server is still reachable (we may have just left/dissolved a
+                    // session, or the server rejected a join) — so re-derive the
+                    // state from a fresh availability check instead of guessing.
+                    // 'checking' is only a transient placeholder while that
+                    // check is in flight; it never lingers as a final state.
+                    this._setConnectionState('checking');
+                    this._checkServerAvailability().then((available) => {
+                        if (this._connectionState !== 'session') {
+                            this._setConnectionState(available ? 'connected' : 'failed');
+                        }
+                    });
+                }
             }
             const joinedFromJoinPage = !!this._joinError;
             this._joinError = null;
@@ -1170,6 +1178,8 @@ class EdiromConnectedWorkspace extends HTMLElement {
                 if (joinedFromJoinPage) {
                     this._pageHistory = ['initialPage'];
                     this._switchPage('joinPage', { pushHistory: false });
+                } else if (reason === 'serverShutdown') {
+                    this._switchPage('failedConnectionPage', { pushHistory: false });
                 } else {
                     this._switchPage('initialPage', { pushHistory: false });
                 }
@@ -1284,6 +1294,8 @@ class EdiromConnectedWorkspace extends HTMLElement {
             if (!this._disconnectReason) this._disconnectReason = 'dissolved';
         } else if (protocol.matches(dataJson, 'clientRemoved')) {
             if (!this._disconnectReason) this._disconnectReason = 'removed';
+        } else if (protocol.matches(dataJson, 'serverShutdown')) {
+            this._disconnectReason = 'serverShutdown';
         } else if (dataJson.sessionId && this._sessionId === null) {
             this._setSessionId(dataJson.sessionId);
         } else if (dataJson.clientId && this._clientId === null) {

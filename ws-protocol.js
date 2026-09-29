@@ -70,6 +70,14 @@ export const MESSAGES_TO_CLIENT = {
         channel: 'response',
         build: () => ({ response: 'sessionDissolved' })
     },
+    // Sent to every connected client right before the server process itself
+    // shuts down (a deploy/restart, or as a last resort after an unexpected
+    // error) — distinct from sessionDissolved, which means a session ended
+    // while the server keeps running. The socket is closed right after.
+    serverShutdown: {
+        channel: 'response',
+        build: () => ({ response: 'serverShutdown' })
+    },
     // Sent, then the socket is closed, when a requested sessionId doesn't match a live session.
     // `reason` is one of ERROR_REASONS.
     error: {
