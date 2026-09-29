@@ -76,10 +76,13 @@ The WebSocket upgrade URL carries these query parameters (see `CONNECT_PARAMS`, 
 
 | param | purpose |
 |---|---|
+| `protocolVersion` | **required**, must equal `PROTOCOL_VERSION` in `ws-protocol.js`. A missing or different value is answered with `error`/`protocolMismatch` and the socket is closed — also for `ping=true`, so the availability check already reveals an incompatible server. Bump `PROTOCOL_VERSION` whenever a change to `ws-protocol.js` would make an older client and a newer server (or vice versa) misunderstand each other. |
 | `ping` | `true` → lightweight health check; server replies `pong` and closes. No session is touched. |
 | `sessionId` | join an existing session (case-insensitive, 6-character code). Omit to create a new session. |
-| `clientName` | display name for this client (server truncates to 64 chars). |
-| `deviceType` | free-form device label (server truncates to 32 chars). |
+| `clientName` | display name for this client. The server strips control characters and truncates to 64 characters (also on `updateClientName`). |
+| `deviceType` | free-form device label (server strips control characters and truncates to 32 characters). |
+
+`buildConnectUrl` and `buildPingUrl` add `protocolVersion` automatically.
 
 ### Server → client messages
 
@@ -92,7 +95,7 @@ The WebSocket upgrade URL carries these query parameters (see `CONNECT_PARAMS`, 
 | `clientRemoved` | `{ response }` | this client was kicked; the socket is closed right after |
 | `sessionDissolved` | `{ response }` | the session ended; the socket is closed right after |
 | `serverShutdown` | `{ response }` | the server process itself is shutting down (restart/deploy, or a last-resort crash recovery); the socket is closed right after |
-| `error` | `{ response, reason }` | `reason` is one of `ERROR_REASONS` (currently just `sessionNotFound`); the socket is closed right after |
+| `error` | `{ response, reason, ...details }` | the server refused the connection; `reason` is one of `ERROR_REASONS` — `sessionNotFound`, `sessionFull` (session at its member limit), `serverFull` (server at its session limit), `protocolMismatch` (carries `serverVersion`). The socket is closed right after |
 | `pong` | `{ response }` | reply to a `ping=true` health check |
 | `syncState` | `{ type, payload: { patch } }` | a shared-state change (see "Session state" above). Always sent once to a joiner, possibly with an empty `patch` |
 
@@ -108,6 +111,8 @@ The WebSocket upgrade URL carries these query parameters (see `CONNECT_PARAMS`, 
 | `updateState` | `{ type, payload: { patch, cause? } }` | reports a state change (see "Session state" above) |
 
 Unknown `message`/`type` values are ignored by the server (a warning is logged there for an unrecognized `type`).
+
+A client that sends messages faster than the server's rate limit (default: 40/s sustained, bursts of 80) is disconnected with WebSocket close code `1008`. A server that is at its total connection limit refuses the upgrade itself with HTTP `503`.
 
 ## Styling
 

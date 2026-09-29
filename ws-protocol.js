@@ -14,15 +14,23 @@
 // any JSON message is exchanged.
 // -----------------------------------------------------------------------
 
+// Bump this whenever a change to this file would make an older client and a
+// newer server (or vice versa) misunderstand each other. The server rejects
+// any connection whose `protocolVersion` differs (see ERROR_REASONS.protocolMismatch),
+// including one that sends none.
+export const PROTOCOL_VERSION = 1;
+
 export const CONNECT_PARAMS = {
     ping: 'ping',
     sessionId: 'sessionId',
     clientName: 'clientName',
-    deviceType: 'deviceType'
+    deviceType: 'deviceType',
+    protocolVersion: 'protocolVersion'
 };
 
 export function buildConnectUrl(wsUrl, { clientName, deviceType, sessionId } = {}) {
     const params = new URLSearchParams({
+        [CONNECT_PARAMS.protocolVersion]: PROTOCOL_VERSION,
         [CONNECT_PARAMS.clientName]: clientName,
         [CONNECT_PARAMS.deviceType]: deviceType
     });
@@ -31,7 +39,11 @@ export function buildConnectUrl(wsUrl, { clientName, deviceType, sessionId } = {
 }
 
 export function buildPingUrl(wsUrl) {
-    return `${wsUrl}?${CONNECT_PARAMS.ping}=true`;
+    const params = new URLSearchParams({
+        [CONNECT_PARAMS.ping]: 'true',
+        [CONNECT_PARAMS.protocolVersion]: PROTOCOL_VERSION
+    });
+    return `${wsUrl}?${params.toString()}`;
 }
 
 // -----------------------------------------------------------------------
@@ -78,11 +90,13 @@ export const MESSAGES_TO_CLIENT = {
         channel: 'response',
         build: () => ({ response: 'serverShutdown' })
     },
-    // Sent, then the socket is closed, when a requested sessionId doesn't match a live session.
-    // `reason` is one of ERROR_REASONS.
+    // Sent, then the socket is closed, when the server refuses a connection
+    // (unknown sessionId, full session/server, incompatible protocol version).
+    // `reason` is one of ERROR_REASONS; `details` are reason-specific extra
+    // fields (protocolMismatch carries `serverVersion`).
     error: {
         channel: 'response',
-        build: ({ reason }) => ({ response: 'error', reason })
+        build: ({ reason, ...details }) => ({ response: 'error', reason, ...details })
     },
     // Reply to a ping=true health check.
     pong: {
@@ -135,7 +149,14 @@ export const MESSAGES_TO_SERVER = {
 // -----------------------------------------------------------------------
 
 export const ERROR_REASONS = {
-    sessionNotFound: 'sessionNotFound'
+    // The requested sessionId doesn't match a live session.
+    sessionNotFound: 'sessionNotFound',
+    // The connection's protocolVersion differs from the server's (also sent in reply to a ping).
+    protocolMismatch: 'protocolMismatch',
+    // The server is at its session limit, so no new session can be created.
+    serverFull: 'serverFull',
+    // The requested session is at its member limit.
+    sessionFull: 'sessionFull'
 };
 
 // -----------------------------------------------------------------------

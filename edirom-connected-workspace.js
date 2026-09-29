@@ -788,6 +788,11 @@ class EdiromConnectedWorkspace extends HTMLElement {
         this._inviteUrl = null;
         this._autoJoined = false;
         this._disconnectReason = null;
+        // True once the server told us (protocolMismatch) that it speaks a
+        // different protocol version than this build; only a page reload
+        // (i.e. a newer/older component) can fix that, so it is shown as a
+        // dedicated failure instead of a generic "no connection".
+        this._incompatibleServer = false;
         this._isCreatingSession = false;
         this._browserReady = false;
         this._pendingAutoJoinSessionId = null;
@@ -1060,6 +1065,7 @@ class EdiromConnectedWorkspace extends HTMLElement {
     _checkServerAvailability = () => {
         return new Promise((resolve) => {
             if (!this.wsUrl) { resolve(false); return; }
+            this._incompatibleServer = false;
             const ws = new WebSocket(protocol.buildPingUrl(this.wsUrl));
             let settled = false;
             const finish = (result) => {
@@ -1073,7 +1079,13 @@ class EdiromConnectedWorkspace extends HTMLElement {
             const timeoutId = setTimeout(() => finish(false), 5000);
             ws.onmessage = (event) => {
                 try {
-                    if (protocol.matches(JSON.parse(event.data), 'pong')) finish(true);
+                    const message = JSON.parse(event.data);
+                    if (protocol.matches(message, 'pong')) {
+                        finish(true);
+                    } else if (protocol.matches(message, 'error') && message.reason === protocol.ERROR_REASONS.protocolMismatch) {
+                        this._incompatibleServer = true;
+                        finish(false);
+                    }
                 } catch (_) { /* ignore */ }
             };
             ws.onerror = () => finish(false);
@@ -1178,7 +1190,7 @@ class EdiromConnectedWorkspace extends HTMLElement {
                 if (joinedFromJoinPage) {
                     this._pageHistory = ['initialPage'];
                     this._switchPage('joinPage', { pushHistory: false });
-                } else if (reason === 'serverShutdown') {
+                } else if (reason === 'serverShutdown' || this._incompatibleServer) {
                     this._switchPage('failedConnectionPage', { pushHistory: false });
                 } else {
                     this._switchPage('initialPage', { pushHistory: false });
@@ -1290,6 +1302,18 @@ class EdiromConnectedWorkspace extends HTMLElement {
         } else if (protocol.matches(dataJson, 'error') && dataJson.reason === protocol.ERROR_REASONS.sessionNotFound) {
             this._joinError = true;
             this._showNotification('Diese Sitzungs-ID existiert nicht.', 'red');
+        } else if (protocol.matches(dataJson, 'error') && dataJson.reason === protocol.ERROR_REASONS.sessionFull) {
+            this._joinError = true; // like sessionNotFound: bring the user back to the join page
+            this._showNotification('Diese Sitzung ist voll.', 'red');
+        } else if (protocol.matches(dataJson, 'error') && dataJson.reason === protocol.ERROR_REASONS.serverFull) {
+            this._showNotification('Der Server ist derzeit ausgelastet. Bitte versuchen Sie es später erneut.', 'red');
+        } else if (protocol.matches(dataJson, 'error') && dataJson.reason === protocol.ERROR_REASONS.protocolMismatch) {
+            // Set the state to 'failed' right away: onclose then skips its
+            // availability re-check (which would only say "not compatible" again)
+            // and shows the failure page.
+            this._incompatibleServer = true;
+            this._setConnectionState('failed');
+            this._showNotification('Client und Server sind nicht kompatibel. Bitte laden Sie die Seite neu.', 'red');
         } else if (protocol.matches(dataJson, 'sessionDissolved')) {
             if (!this._disconnectReason) this._disconnectReason = 'dissolved';
         } else if (protocol.matches(dataJson, 'clientRemoved')) {
@@ -1740,7 +1764,9 @@ class EdiromConnectedWorkspace extends HTMLElement {
         cardIcon.setAttribute('name', 'cloud_off');
         cardIcon.setAttribute('size', 'fill');
         const cardText = document.createElement('p');
-        cardText.textContent = 'Die Verbindung zum Server konnte nicht hergestellt werden.';
+        cardText.textContent = this._incompatibleServer
+            ? 'Client und Server sind nicht kompatibel. Bitte laden Sie die Seite neu.'
+            : 'Die Verbindung zum Server konnte nicht hergestellt werden.';
         card.appendChild(cardIcon);
         card.appendChild(cardText);
         page.appendChild(card);
