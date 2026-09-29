@@ -34,7 +34,7 @@ Web component for connecting multiple devices in a shared session via WebSocket:
 
 | Method | Description |
 |---|---|
-| `sendMessage(type, payload?, clientTargets?)` | Sends `{ type, payload }` to the other clients in the session, or only to `clientTargets` (an array of client IDs) if given. |
+| `sendMessage(type, payload?)` | Sends `{ type, payload }` to the other clients in the session. |
 | `registerStateHandler({ keys, get, apply })` | Registers the host app's handler for a group of session-state keys. Returns a function that unregisters it. See below. |
 | `updateState(patch)` | Reports that (part of) this client's state changed locally, e.g. `updateState({ connection: 'xyz' })`. See below. |
 
@@ -65,6 +65,48 @@ Notes:
 - A `syncState` that arrives before a handler is registered is kept and applied on `registerStateHandler`.
 - The component reports the handlers' state automatically when a session is created, and after the initial `syncState` of a joined session.
 - Which keys exist, and whether they're shared with other clients, is defined by `STATE_SCHEMA` in the ws-server.
+
+## Wire protocol
+
+[`ws-protocol.js`](ws-protocol.js) is the single source of truth for every JSON message exchanged with `edirom-ws-server` over the WebSocket — both this component and the server load this exact file (the server vendors this repo as a git submodule and loads it via dynamic `import()`, since the server is CommonJS). Changing the protocol means editing `ws-protocol.js` once; both ends pick it up automatically. This section is a human-readable overview; the code is authoritative if the two ever disagree.
+
+### Connecting
+
+The WebSocket upgrade URL carries these query parameters (see `CONNECT_PARAMS`, `buildConnectUrl`, `buildPingUrl`):
+
+| param | purpose |
+|---|---|
+| `ping` | `true` → lightweight health check; server replies `pong` and closes. No session is touched. |
+| `sessionId` | join an existing session (case-insensitive, 6-character code). Omit to create a new session. |
+| `clientName` | display name for this client (server truncates to 64 chars). |
+| `deviceType` | free-form device label (server truncates to 32 chars). |
+
+### Server → client messages
+
+| message | shape | when |
+|---|---|---|
+| `sessionJoined` | `{ response, sessionId, clientId, sessionData }` | right after this client creates or joins a session |
+| `clientConnected` | `{ response, clientData, sessionData }` | another member joined |
+| `clientDisconnected` | `{ response, clientData, sessionData }` | another member left |
+| `sessionDataUpdated` | `{ response, sessionData }` | another member renamed itself |
+| `clientRemoved` | `{ response }` | this client was kicked; the socket is closed right after |
+| `sessionDissolved` | `{ response }` | the session ended; the socket is closed right after |
+| `error` | `{ response, reason }` | `reason` is one of `ERROR_REASONS` (currently just `sessionNotFound`); the socket is closed right after |
+| `pong` | `{ response }` | reply to a `ping=true` health check |
+| `syncState` | `{ type, payload: { patch } }` | a shared-state change (see "Session state" above). Always sent once to a joiner, possibly with an empty `patch` |
+
+`sessionData` is always `{ sessionMembers: [{ id, metadata: { name, deviceType } }, ...] }`. `clientData` is always `{ id, metadata: { name, deviceType } }`.
+
+### Client → server messages
+
+| message | shape | effect |
+|---|---|---|
+| `updateClientName` | `{ message, clientName }` | renames this client |
+| `removeClient` | `{ message, clientId }` | kicks the named client |
+| `dissolveSession` | `{ message }` | ends the session for everyone |
+| `updateState` | `{ type, payload: { patch, cause? } }` | reports a state change (see "Session state" above) |
+
+Unknown `message`/`type` values are ignored by the server (a warning is logged there for an unrecognized `type`).
 
 ## Styling
 

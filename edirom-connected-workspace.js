@@ -1,4 +1,5 @@
 import '../edirom-core-web-components/src/edirom-icon.js';
+import * as protocol from './ws-protocol.js';
 
 console.log("Connected Workspace Web Component loaded");
 
@@ -1059,7 +1060,7 @@ class EdiromConnectedWorkspace extends HTMLElement {
     _checkServerAvailability = () => {
         return new Promise((resolve) => {
             if (!this.wsUrl) { resolve(false); return; }
-            const ws = new WebSocket(`${this.wsUrl}?ping=true`);
+            const ws = new WebSocket(protocol.buildPingUrl(this.wsUrl));
             let settled = false;
             const finish = (result) => {
                 if (settled) return;
@@ -1072,7 +1073,7 @@ class EdiromConnectedWorkspace extends HTMLElement {
             const timeoutId = setTimeout(() => finish(false), 5000);
             ws.onmessage = (event) => {
                 try {
-                    if (JSON.parse(event.data)?.response === 'pong') finish(true);
+                    if (protocol.matches(JSON.parse(event.data), 'pong')) finish(true);
                 } catch (_) { /* ignore */ }
             };
             ws.onerror = () => finish(false);
@@ -1120,10 +1121,11 @@ class EdiromConnectedWorkspace extends HTMLElement {
         this._sessionData = null;
         this._resetStateSync();
 
-        const clientName = encodeURIComponent(this.deviceName);
-        const deviceType = encodeURIComponent(this.getDeviceType());
-        const base = `${this.wsUrl}?clientName=${clientName}&deviceType=${deviceType}`;
-        const url = sessionId ? `${base}&sessionId=${sessionId}` : base;
+        const url = protocol.buildConnectUrl(this.wsUrl, {
+            clientName: this.deviceName,
+            deviceType: this.getDeviceType(),
+            sessionId
+        });
         this._webSocket = new WebSocket(url);
 
         this._webSocket.onopen = () => {
@@ -1221,19 +1223,19 @@ class EdiromConnectedWorkspace extends HTMLElement {
 
     _sendRemoveClient = (clientId) => {
         if (this._webSocket?.readyState === WebSocket.OPEN) {
-            this._webSocket.send(JSON.stringify({ message: 'removeClient', clientId }));
+            this._webSocket.send(JSON.stringify(protocol.build('removeClient', { clientId })));
         }
     }
 
     _sendUpdateClientName = (name) => {
         if (this._webSocket?.readyState === WebSocket.OPEN) {
-            this._webSocket.send(JSON.stringify({ message: 'updateClientName', clientName: name }));
+            this._webSocket.send(JSON.stringify(protocol.build('updateClientName', { clientName: name })));
         }
     }
 
     _sendDissolveSession = () => {
         if (this._webSocket?.readyState === WebSocket.OPEN) {
-            this._webSocket.send(JSON.stringify({ message: 'dissolveSession' }));
+            this._webSocket.send(JSON.stringify(protocol.build('dissolveSession')));
         }
     }
 
@@ -1241,14 +1243,11 @@ class EdiromConnectedWorkspace extends HTMLElement {
      * Sends a generic message to the WebSocket server.
      * @param {string} type - Message type (e.g. "syncState")
      * @param {Object|null} [payload=null] - Optional payload data
-     * @param {string[]|null} [clientTargets=null] - Optional list of client IDs to target;
-     *   omit or pass null to send to all other clients in the session
      */
-    sendMessage = (type, payload = null, clientTargets = null) => {
+    sendMessage = (type, payload = null) => {
         if (this._webSocket?.readyState !== WebSocket.OPEN) return;
         const message = { type };
         if (payload !== null && payload !== undefined) message.payload = payload;
-        if (Array.isArray(clientTargets)) message.client_targets = clientTargets;
         this._webSocket.send(JSON.stringify(message));
         console.log('EdiromConnectedWorkspace: message sent', message);
     }
@@ -1256,7 +1255,7 @@ class EdiromConnectedWorkspace extends HTMLElement {
 
     _handleMessage = (dataJson) => {
         console.log('EdiromConnectedWorkspace: received message', dataJson);
-        if (dataJson.response === 'sessionJoined') {
+        if (protocol.matches(dataJson, 'sessionJoined')) {
             this._clientId = dataJson.clientId;
             this._sessionId = dataJson.sessionId;
             this._sessionData = dataJson.sessionData;
@@ -1278,18 +1277,18 @@ class EdiromConnectedWorkspace extends HTMLElement {
                 bubbles: true,
                 composed: true
             }));
-        } else if (dataJson.response === 'error' && dataJson.reason === 'sessionNotFound') {
+        } else if (protocol.matches(dataJson, 'error') && dataJson.reason === protocol.ERROR_REASONS.sessionNotFound) {
             this._joinError = true;
             this._showNotification('Diese Sitzungs-ID existiert nicht.', 'red');
-        } else if (dataJson.response === 'sessionDissolved') {
+        } else if (protocol.matches(dataJson, 'sessionDissolved')) {
             if (!this._disconnectReason) this._disconnectReason = 'dissolved';
-        } else if (dataJson.response === 'clientRemoved') {
+        } else if (protocol.matches(dataJson, 'clientRemoved')) {
             if (!this._disconnectReason) this._disconnectReason = 'removed';
         } else if (dataJson.sessionId && this._sessionId === null) {
             this._setSessionId(dataJson.sessionId);
         } else if (dataJson.clientId && this._clientId === null) {
             this._clientId = dataJson.clientId;
-        } else if (dataJson.type === 'syncState') {
+        } else if (protocol.matches(dataJson, 'syncState')) {
             this._handleSyncState(dataJson.payload?.patch).catch((error) => {
                 console.error('EdiromConnectedWorkspace: applying syncState failed.', error);
             });
@@ -1299,19 +1298,19 @@ class EdiromConnectedWorkspace extends HTMLElement {
                 bubbles: true,
                 composed: true
             }));
-        } else if (dataJson.response === 'clientConnected') {
+        } else if (protocol.matches(dataJson, 'clientConnected')) {
             console.log('EdiromConnectedWorkspace: client connected.');
             this._sessionData = dataJson.sessionData;
             this._updateMembersList();
             const connectedName = dataJson.clientData?.metadata?.name ?? 'Unbekanntes Gerät';
             this._showNotification(`"${connectedName}" ist der Sitzung beigetreten.`, 'green');
-        } else if (dataJson.response === 'clientDisconnected') {
+        } else if (protocol.matches(dataJson, 'clientDisconnected')) {
             console.log('EdiromConnectedWorkspace: client disconnected.');
             this._sessionData = dataJson.sessionData;
             this._updateMembersList();
             const disconnectedName = dataJson.clientData?.metadata?.name ?? 'Unbekanntes Gerät';
             this._showNotification(`"${disconnectedName}" hat die Sitzung verlassen.`, 'yellow');
-        } else if (dataJson.response === 'sessionDataUpdated') {
+        } else if (protocol.matches(dataJson, 'sessionDataUpdated')) {
             this._sessionData = dataJson.sessionData;
             this._updateMembersList();
         } else if (dataJson.sessionData) {
@@ -1388,7 +1387,8 @@ class EdiromConnectedWorkspace extends HTMLElement {
         }
         if (Object.keys(changed).length === 0) return;
         Object.assign(this._knownState, changed);
-        this.sendMessage('updateState', { patch: changed, cause: 'user' });
+        const message = protocol.build('updateState', { patch: changed, cause: 'user' });
+        this.sendMessage(message.type, message.payload);
     }
 
     _resetStateSync = () => {
@@ -1483,7 +1483,8 @@ class EdiromConnectedWorkspace extends HTMLElement {
         }
         if (Object.keys(mismatch).length === 0) return;
         Object.assign(this._knownState, mismatch);
-        this.sendMessage('updateState', { patch: mismatch, cause: 'syncResult' });
+        const message = protocol.build('updateState', { patch: mismatch, cause: 'syncResult' });
+        this.sendMessage(message.type, message.payload);
     }
 
     /** Applies syncState keys that arrived before this handler existed, then reports the rest of its state. */
