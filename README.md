@@ -22,6 +22,7 @@ Web component for connecting multiple devices in a shared session via WebSocket:
 | `ws-url` | string | WebSocket server URL. Required for connection. |
 | `session` | string | Session ID to auto-join on connect. When set, the component automatically joins the given session and opens the popover. |
 | `invite-url` | string | Base URL used to generate invite links and QR codes. Combined with the current session ID. |
+| `lang` | `en` \| `de` | Language of the UI. Defaults to `en`; unsupported values also fall back to `en`. Can be changed at any time — the open page is re-rendered. Already shown notifications keep their language. |
 
 ## Events
 

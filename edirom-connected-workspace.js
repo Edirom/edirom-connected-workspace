@@ -20,6 +20,169 @@ const _COMPONENT_BASE = (() => {
     return '';
 })();
 
+
+const DEFAULT_LANGUAGE = 'en';
+
+const TRANSLATIONS = {
+
+    en: {
+        // Header & navigation
+        'header.title': 'Connected Workspace',
+        'button.open': 'Connected Workspace',
+        'button.back': 'Back',
+        'button.close': 'Close',
+
+        // Start page
+        'initial.deviceName': 'Device name:',
+        'initial.editDeviceName': 'Edit device name',
+        'initial.createSession': 'Create session',
+        'initial.joinSession': 'Join session',
+        'initial.intro': 'The Connected Workspace lets you use the digital edition on several devices at the same time.',
+
+        // Join page
+        'join.enterSessionId': 'Enter session ID:',
+
+        // Session information page
+        'session.title': 'Session information',
+        'session.devices': 'Devices',
+        'session.addDevice': 'Add new device',
+        'session.leave': 'Leave session',
+        'session.leaveConfirm': 'Do you really want to leave this session?',
+        'session.dissolve': 'Dissolve session',
+        'session.dissolveConfirm': 'Do you really want to dissolve this session?',
+
+        // Members list
+        'member.editName': 'Edit name',
+        'member.remove': 'Remove device',
+        'member.removeConfirm': 'Do you really want to remove the device "{name}"?',
+        'member.unknown': 'Unknown device',
+
+        // Invite page
+        'invite.sessionId': 'Session ID',
+        'invite.qrCode': 'QR code',
+        'invite.url': 'URL',
+        'invite.copyUrl': 'Copy URL',
+        'invite.copied': 'Copied!',
+        'invite.share': 'Share',
+
+        // Connection failed page
+        'failed.noConnection': 'The connection to the server could not be established.',
+        'failed.retry': 'Try again',
+
+        // Notifications
+        'notify.sessionCreated': 'Session created.',
+        'notify.joined': 'Joined successfully.',
+        'notify.clientJoined': '"{name}" joined the session.',
+        'notify.clientLeft': '"{name}" left the session.',
+        'notify.sessionDissolved': 'The session was dissolved.',
+        'notify.removed': 'Your device was removed from the session.',
+        'notify.left': 'You left the session.',
+        'notify.connectionLost': 'Connection lost.',
+        'notify.connectionSuccess': 'Connection to the server established.',
+        'notify.connectionFailed': 'Could not connect to the server.',
+        'notify.serverShutdown': 'The server for the Connected Workspace is temporarily unavailable.',
+        'notify.sessionNotFound': 'This session ID does not exist.',
+        'notify.sessionFull': 'This session is full.',
+        'notify.serverFull': 'The server is currently busy. Please try again later.',
+        'notify.incompatible': 'Client and server are not compatible. Please reload the page.',
+    },
+
+    de: {
+        // Header & navigation
+        'header.title': 'Vernetzte Arbeitsumgebung',
+        'button.open': 'Vernetzte Arbeitsumgebung',
+        'button.back': 'Zurück',
+        'button.close': 'Schließen',
+
+        // Start page
+        'initial.deviceName': 'Gerätename:',
+        'initial.editDeviceName': 'Gerätename bearbeiten',
+        'initial.createSession': 'Sitzung erstellen',
+        'initial.joinSession': 'Sitzung beitreten',
+        'initial.intro': 'Mit der vernetzten Arbeitsumgebung können Sie die digitale Edition auf mehreren Geräten gleichzeitig nutzen.',
+
+        // Join page
+        'join.enterSessionId': 'Sitzungs-ID eingeben:',
+
+        // Session information page
+        'session.title': 'Sitzungsinformationen',
+        'session.devices': 'Geräte',
+        'session.addDevice': 'Neues Gerät hinzufügen',
+        'session.leave': 'Sitzung verlassen',
+        'session.leaveConfirm': 'Möchten Sie diese Sitzung wirklich verlassen?',
+        'session.dissolve': 'Sitzung auflösen',
+        'session.dissolveConfirm': 'Möchten Sie diese Sitzung wirklich auflösen?',
+
+        // Members list
+        'member.editName': 'Namen bearbeiten',
+        'member.remove': 'Gerät entfernen',
+        'member.removeConfirm': 'Möchten Sie das Gerät "{name}" wirklich entfernen?',
+        'member.unknown': 'Unbekanntes Gerät',
+
+        // Invite page
+        'invite.sessionId': 'Sitzungs-ID',
+        'invite.qrCode': 'QR-Code',
+        'invite.url': 'URL',
+        'invite.copyUrl': 'URL kopieren',
+        'invite.copied': 'Kopiert!',
+        'invite.share': 'Teilen',
+
+        // Connection failed page
+        'failed.noConnection': 'Die Verbindung zum Server konnte nicht hergestellt werden.',
+        'failed.retry': 'Erneut versuchen',
+
+        // Notifications
+        'notify.sessionCreated': 'Sitzung wurde erstellt.',
+        'notify.joined': 'Erfolgreich beigetreten.',
+        'notify.clientJoined': '"{name}" ist der Sitzung beigetreten.',
+        'notify.clientLeft': '"{name}" hat die Sitzung verlassen.',
+        'notify.sessionDissolved': 'Die Sitzung wurde aufgelöst.',
+        'notify.removed': 'Dein Gerät wurde aus der Sitzung entfernt.',
+        'notify.left': 'Du hast die Sitzung verlassen.',
+        'notify.connectionLost': 'Verbindung unterbrochen.',
+        'notify.connectionSuccess': 'Verbindung zum Server erfolgreich.',
+        'notify.connectionFailed': 'Verbindung konnte nicht hergestellt werden.',
+        'notify.serverShutdown': 'Der Server für die Vernetzte Arbeitsumgebung steht kurzfristig nicht zur Verfügung.',
+        'notify.sessionNotFound': 'Diese Sitzungs-ID existiert nicht.',
+        'notify.sessionFull': 'Diese Sitzung ist voll.',
+        'notify.serverFull': 'Der Server ist derzeit ausgelastet. Bitte versuchen Sie es später erneut.',
+        'notify.incompatible': 'Client und Server sind nicht kompatibel. Bitte laden Sie die Seite neu.',
+    },
+};
+
+/**
+ * Maps a raw `lang` attribute value onto a language that has translations.
+ * Case-insensitive, and a regional variant falls back to its base language
+ * ("de-AT" → "de"). Anything unknown or empty yields DEFAULT_LANGUAGE.
+ *
+ * @param {string|null|undefined} value
+ * @returns {string}
+ */
+function resolveLanguage(value) {
+    const code = String(value ?? '').trim().toLowerCase();
+    if (code in TRANSLATIONS) return code;
+    const base = code.split(/[-_]/)[0];
+    return base in TRANSLATIONS ? base : DEFAULT_LANGUAGE;
+}
+
+/**
+ * Looks up `key` in `lang` (falling back to the default language, then to the
+ * key itself) and fills in `{placeholder}` values from `params`.
+ *
+ * @param {string} lang - an already resolved language code
+ * @param {string} key
+ * @param {Object<string, string|number>} [params]
+ * @returns {string}
+ */
+function translate(lang, key, params = {}) {
+    let text = TRANSLATIONS[lang]?.[key];
+    if (text === undefined) {
+        console.warn(`EdiromConnectedWorkspace: no "${lang}" translation for "${key}".`);
+        text = TRANSLATIONS[DEFAULT_LANGUAGE][key] ?? key;
+    }
+    return text.replace(/\{(\w+)\}/g, (match, name) => (name in params ? String(params[name]) : match));
+}
+
 const componentTemplate = `
 <style>
     :host {
@@ -738,21 +901,21 @@ const componentTemplate = `
     }
 </style>
 <div id="ws-container">
-    <button id="ws-button" aria-label="Connected Workspace">
+    <button id="ws-button" data-i18n-aria-label="button.open">
         <edirom-icon name="hub" size="fill"></edirom-icon>
     </button>
     <div id="session-popover" popover="manual">
         <div id="session-popover-inner">
             <div id="session-popover-header">
                 <edirom-icon name="hub" size="fill"></edirom-icon>
-                <span>Vernetzte Arbeitsumgebung</span>
+                <span data-i18n="header.title"></span>
             </div>
             <div id="session-content"></div>
             <div id="bottom-row">
-                <button id="back-button" class="hidden" aria-label="Zurück">
+                <button id="back-button" class="hidden" data-i18n-aria-label="button.back">
                     <edirom-icon name="arrow_back" size="fill"></edirom-icon>
                 </button>
-                <button id="close-button" aria-label="Schließen">
+                <button id="close-button" data-i18n-aria-label="button.close">
                     <edirom-icon name="close" size="fill"></edirom-icon>
                 </button>
             </div>
@@ -775,6 +938,7 @@ class EdiromConnectedWorkspace extends HTMLElement {
     constructor() {
         super();
         this.shadow = this.attachShadow({ mode: 'open', delegatesFocus: true });
+        this._lang = DEFAULT_LANGUAGE;
         this._connectionState = 'checking';
         this._webSocket = null;
         this._clientId = null;
@@ -862,7 +1026,7 @@ class EdiromConnectedWorkspace extends HTMLElement {
     }
 
     static get observedAttributes() {
-        return ['ws-url', 'session', 'invite-url'];
+        return ['ws-url', 'session', 'invite-url', 'lang'];
     }
 
     // -------------------------------------------------------------------------
@@ -925,6 +1089,8 @@ class EdiromConnectedWorkspace extends HTMLElement {
                 this._pendingAutoJoinSessionId = newValue;
                 this._tryAutoJoin();
             }
+        } else if (name === 'lang') {
+            this._setLanguage(newValue);
         } else if (name === 'invite-url') {
             this._inviteUrl = newValue;
             if (this._currentPageName === 'invitePage') {
@@ -945,6 +1111,39 @@ class EdiromConnectedWorkspace extends HTMLElement {
         template.innerHTML = componentTemplate;
         this.shadow.innerHTML = '';
         this.shadow.append(template.content.cloneNode(true));
+        this._translateStaticElements();
+    }
+
+    // -------------------------------------------------------------------------
+    // Localization (texts live in TRANSLATIONS at the top of this file)
+    // -------------------------------------------------------------------------
+
+    /** Returns the translated text for `key` in the current language. */
+    _t = (key, params) => translate(this._lang, key, params);
+
+    /**
+     * Applies the `lang` attribute value. Unsupported values fall back to the
+     * default language. Re-renders what is currently shown.
+     */
+    _setLanguage = (value) => {
+        const lang = resolveLanguage(value);
+        if (lang === this._lang) return;
+        this._lang = lang;
+        if (!this._sessionContent) return; // not rendered yet — the first render picks it up
+        this._translateStaticElements();
+        if (this._currentPageName !== null) {
+            this._switchPage(this._currentPageName, { pushHistory: false });
+        }
+    }
+
+    /** Fills the template's static texts: `data-i18n` (text) and `data-i18n-aria-label`. */
+    _translateStaticElements = () => {
+        this.shadow.querySelectorAll('[data-i18n]').forEach((el) => {
+            el.textContent = this._t(el.dataset.i18n);
+        });
+        this.shadow.querySelectorAll('[data-i18n-aria-label]').forEach((el) => {
+            el.setAttribute('aria-label', this._t(el.dataset.i18nAriaLabel));
+        });
     }
 
     _setupElements = () => {
@@ -1110,7 +1309,7 @@ class EdiromConnectedWorkspace extends HTMLElement {
         }
         if (isRetry) {
             this._showNotification(
-                available ? 'Verbindung zum Server erfolgreich.' : 'Verbindung konnte nicht hergestellt werden.',
+                this._t(available ? 'notify.connectionSuccess' : 'notify.connectionFailed'),
                 available ? 'green' : 'red'
             );
         }
@@ -1151,11 +1350,11 @@ class EdiromConnectedWorkspace extends HTMLElement {
             const reason = this._disconnectReason;
             this._disconnectReason = null;
             if (wasInSession) {
-                if (reason === 'dissolved') this._showNotification('Die Sitzung wurde aufgelöst.', 'yellow');
-                else if (reason === 'removed') this._showNotification('Dein Gerät wurde aus der Sitzung entfernt.', 'yellow');
-                else if (reason === 'left') this._showNotification('Du hast die Sitzung verlassen.', 'yellow');
-                else if (reason === 'serverShutdown') this._showNotification('Der Server für die Vernetzte Arbeitsumgebung steht kurzfristig nicht zur Verfügung.', 'red');
-                else if (reason === null) this._showNotification('Verbindung unterbrochen.', 'red');
+                if (reason === 'dissolved') this._showNotification(this._t('notify.sessionDissolved'), 'yellow');
+                else if (reason === 'removed') this._showNotification(this._t('notify.removed'), 'yellow');
+                else if (reason === 'left') this._showNotification(this._t('notify.left'), 'yellow');
+                else if (reason === 'serverShutdown') this._showNotification(this._t('notify.serverShutdown'), 'red');
+                else if (reason === null) this._showNotification(this._t('notify.connectionLost'), 'red');
             }
             if (this._connectionState !== 'failed') {
                 if (reason === 'serverShutdown') {
@@ -1212,7 +1411,7 @@ class EdiromConnectedWorkspace extends HTMLElement {
         this._webSocket.onerror = (error) => {
             console.error('EdiromConnectedWorkspace: connection error.', error);
             this._setConnectionState('failed');
-            this._showNotification('Verbindung konnte nicht hergestellt werden.', 'red');
+            this._showNotification(this._t('notify.connectionFailed'), 'red');
         };
     }
 
@@ -1284,7 +1483,7 @@ class EdiromConnectedWorkspace extends HTMLElement {
             this._setConnectionState('session');
             this._pageHistory = [];
             this._switchPage('sessionInformation', { pushHistory: false });
-            const joinMsg = this._isCreatingSession ? 'Sitzung wurde erstellt.' : 'Erfolgreich beigetreten.';
+            const joinMsg = this._t(this._isCreatingSession ? 'notify.sessionCreated' : 'notify.joined');
             this._showNotification(joinMsg, 'green');
             if (this._autoJoined) {
                 this._autoJoined = false;
@@ -1301,19 +1500,19 @@ class EdiromConnectedWorkspace extends HTMLElement {
             }));
         } else if (protocol.matches(dataJson, 'error') && dataJson.reason === protocol.ERROR_REASONS.sessionNotFound) {
             this._joinError = true;
-            this._showNotification('Diese Sitzungs-ID existiert nicht.', 'red');
+            this._showNotification(this._t('notify.sessionNotFound'), 'red');
         } else if (protocol.matches(dataJson, 'error') && dataJson.reason === protocol.ERROR_REASONS.sessionFull) {
             this._joinError = true; // like sessionNotFound: bring the user back to the join page
-            this._showNotification('Diese Sitzung ist voll.', 'red');
+            this._showNotification(this._t('notify.sessionFull'), 'red');
         } else if (protocol.matches(dataJson, 'error') && dataJson.reason === protocol.ERROR_REASONS.serverFull) {
-            this._showNotification('Der Server ist derzeit ausgelastet. Bitte versuchen Sie es später erneut.', 'red');
+            this._showNotification(this._t('notify.serverFull'), 'red');
         } else if (protocol.matches(dataJson, 'error') && dataJson.reason === protocol.ERROR_REASONS.protocolMismatch) {
             // Set the state to 'failed' right away: onclose then skips its
             // availability re-check (which would only say "not compatible" again)
             // and shows the failure page.
             this._incompatibleServer = true;
             this._setConnectionState('failed');
-            this._showNotification('Client und Server sind nicht kompatibel. Bitte laden Sie die Seite neu.', 'red');
+            this._showNotification(this._t('notify.incompatible'), 'red');
         } else if (protocol.matches(dataJson, 'sessionDissolved')) {
             if (!this._disconnectReason) this._disconnectReason = 'dissolved';
         } else if (protocol.matches(dataJson, 'clientRemoved')) {
@@ -1338,14 +1537,14 @@ class EdiromConnectedWorkspace extends HTMLElement {
             console.log('EdiromConnectedWorkspace: client connected.');
             this._sessionData = dataJson.sessionData;
             this._updateMembersList();
-            const connectedName = dataJson.clientData?.metadata?.name ?? 'Unbekanntes Gerät';
-            this._showNotification(`"${connectedName}" ist der Sitzung beigetreten.`, 'green');
+            const connectedName = dataJson.clientData?.metadata?.name ?? this._t('member.unknown');
+            this._showNotification(this._t('notify.clientJoined', { name: connectedName }), 'green');
         } else if (protocol.matches(dataJson, 'clientDisconnected')) {
             console.log('EdiromConnectedWorkspace: client disconnected.');
             this._sessionData = dataJson.sessionData;
             this._updateMembersList();
-            const disconnectedName = dataJson.clientData?.metadata?.name ?? 'Unbekanntes Gerät';
-            this._showNotification(`"${disconnectedName}" hat die Sitzung verlassen.`, 'yellow');
+            const disconnectedName = dataJson.clientData?.metadata?.name ?? this._t('member.unknown');
+            this._showNotification(this._t('notify.clientLeft', { name: disconnectedName }), 'yellow');
         } else if (protocol.matches(dataJson, 'sessionDataUpdated')) {
             this._sessionData = dataJson.sessionData;
             this._updateMembersList();
@@ -1764,9 +1963,7 @@ class EdiromConnectedWorkspace extends HTMLElement {
         cardIcon.setAttribute('name', 'cloud_off');
         cardIcon.setAttribute('size', 'fill');
         const cardText = document.createElement('p');
-        cardText.textContent = this._incompatibleServer
-            ? 'Client und Server sind nicht kompatibel. Bitte laden Sie die Seite neu.'
-            : 'Die Verbindung zum Server konnte nicht hergestellt werden.';
+        cardText.textContent = this._t(this._incompatibleServer ? 'notify.incompatible' : 'failed.noConnection');
         card.appendChild(cardIcon);
         card.appendChild(cardText);
         page.appendChild(card);
@@ -1777,7 +1974,7 @@ class EdiromConnectedWorkspace extends HTMLElement {
         retryIcon.setAttribute('name', 'refresh');
         retryIcon.setAttribute('size', 'fill');
         const retryLabel = document.createElement('span');
-        retryLabel.textContent = 'Erneut versuchen';
+        retryLabel.textContent = this._t('failed.retry');
         retryButton.appendChild(retryIcon);
         retryButton.appendChild(retryLabel);
         retryButton.addEventListener('click', () => {
@@ -1798,7 +1995,7 @@ class EdiromConnectedWorkspace extends HTMLElement {
 
         const label = document.createElement('span');
         label.className = 'device-name-label';
-        label.textContent = 'Gerätename:';
+        label.textContent = this._t('initial.deviceName');
 
         const nameSpan = document.createElement('span');
         nameSpan.className = 'device-name-text';
@@ -1806,7 +2003,7 @@ class EdiromConnectedWorkspace extends HTMLElement {
 
         const editButton = document.createElement('button');
         editButton.className = 'icon-button';
-        editButton.setAttribute('aria-label', 'Gerätename bearbeiten');
+        editButton.setAttribute('aria-label', this._t('initial.editDeviceName'));
         const editIcon = document.createElement('edirom-icon');
         editIcon.setAttribute('name', 'edit');
         editIcon.setAttribute('size', 'fill');
@@ -1869,7 +2066,7 @@ class EdiromConnectedWorkspace extends HTMLElement {
         newSessionIcon.setAttribute('name', 'add_box');
         newSessionIcon.setAttribute('size', 'fill');
         const newSessionLabel = document.createElement('span');
-        newSessionLabel.textContent = 'Sitzung erstellen';
+        newSessionLabel.textContent = this._t('initial.createSession');
         newSessionBtn.appendChild(newSessionIcon);
         newSessionBtn.appendChild(newSessionLabel);
         newSessionBtn.addEventListener('click', () => {
@@ -1882,7 +2079,7 @@ class EdiromConnectedWorkspace extends HTMLElement {
         joinSessionIcon.setAttribute('name', 'login');
         joinSessionIcon.setAttribute('size', 'fill');
         const joinSessionLabel = document.createElement('span');
-        joinSessionLabel.textContent = 'Sitzung beitreten';
+        joinSessionLabel.textContent = this._t('initial.joinSession');
         joinSessionBtn.appendChild(joinSessionIcon);
         joinSessionBtn.appendChild(joinSessionLabel);
         joinSessionBtn.addEventListener('click', () => this._switchPage('joinPage'));
@@ -1894,7 +2091,7 @@ class EdiromConnectedWorkspace extends HTMLElement {
         // Intro text
         const introText = document.createElement('p');
         introText.className = 'intro-text';
-        introText.textContent = 'Mit der vernetzten Arbeitsumgebung können Sie die digitale Edition auf mehreren Geräten gleichzeitig nutzen.';
+        introText.textContent = this._t('initial.intro');
         page.appendChild(introText);
 
         return page;
@@ -1905,11 +2102,11 @@ class EdiromConnectedWorkspace extends HTMLElement {
         page.className = 'page-session-information';
 
         const h1 = document.createElement('h1');
-        h1.textContent = 'Sitzungsinformationen';
+        h1.textContent = this._t('session.title');
         page.appendChild(h1);
 
         const h2 = document.createElement('h2');
-        h2.textContent = 'Geräte';
+        h2.textContent = this._t('session.devices');
         page.appendChild(h2);
 
         const membersList = document.createElement('div');
@@ -1924,7 +2121,7 @@ class EdiromConnectedWorkspace extends HTMLElement {
         addDeviceIcon.setAttribute('name', 'add_to_queue');
         addDeviceIcon.setAttribute('size', 'fill');
         const addDeviceLabel = document.createElement('span');
-        addDeviceLabel.textContent = 'Neues Gerät hinzufügen';
+        addDeviceLabel.textContent = this._t('session.addDevice');
         addDeviceBtn.appendChild(addDeviceIcon);
         addDeviceBtn.appendChild(addDeviceLabel);
         addDeviceBtn.addEventListener('click', () => this._switchPage('invitePage'));
@@ -1936,11 +2133,11 @@ class EdiromConnectedWorkspace extends HTMLElement {
         leaveIcon.setAttribute('name', 'logout');
         leaveIcon.setAttribute('size', 'fill');
         const leaveLabel = document.createElement('span');
-        leaveLabel.textContent = 'Sitzung verlassen';
+        leaveLabel.textContent = this._t('session.leave');
         leaveSessionBtn.appendChild(leaveIcon);
         leaveSessionBtn.appendChild(leaveLabel);
         leaveSessionBtn.addEventListener('click', () => {
-            const shouldLeave = window.confirm('Möchten Sie diese Sitzung wirklich verlassen?');
+            const shouldLeave = window.confirm(this._t('session.leaveConfirm'));
             if (shouldLeave) {
                 this._disconnectReason = 'left';
                 this._sendRemoveClient(this._clientId);
@@ -1953,11 +2150,11 @@ class EdiromConnectedWorkspace extends HTMLElement {
         dissolveIcon.setAttribute('name', 'destruction');
         dissolveIcon.setAttribute('size', 'fill');
         const dissolveLabel = document.createElement('span');
-        dissolveLabel.textContent = 'Sitzung auflösen';
+        dissolveLabel.textContent = this._t('session.dissolve');
         dissolveSessionBtn.appendChild(dissolveIcon);
         dissolveSessionBtn.appendChild(dissolveLabel);
         dissolveSessionBtn.addEventListener('click', () => {
-            const shouldDissolve = window.confirm('Möchten Sie diese Sitzung wirklich auflösen?');
+            const shouldDissolve = window.confirm(this._t('session.dissolveConfirm'));
             if (shouldDissolve) {
                 this._sendDissolveSession();
             }
@@ -1981,7 +2178,7 @@ class EdiromConnectedWorkspace extends HTMLElement {
         sessionIdContainer.className = 'invite-type-container';
         let inviteTypeLabel = document.createElement('div');
         inviteTypeLabel.className = 'invite-type-label';
-        inviteTypeLabel.textContent = 'Sitzungs-ID';
+        inviteTypeLabel.textContent = this._t('invite.sessionId');
         sessionIdContainer.appendChild(inviteTypeLabel);
         const sessionIdEl = document.createElement('div');
         sessionIdEl.id = 'session-id';
@@ -1994,7 +2191,7 @@ class EdiromConnectedWorkspace extends HTMLElement {
         qrContainer.className = 'invite-type-container';
         inviteTypeLabel = document.createElement('div');
         inviteTypeLabel.className = 'invite-type-label';
-        inviteTypeLabel.textContent = 'QR-Code';
+        inviteTypeLabel.textContent = this._t('invite.qrCode');
         qrContainer.appendChild(inviteTypeLabel);
         const qrPlaceholder = document.createElement('div');
         qrPlaceholder.id = 'qr-code-placeholder';
@@ -2007,7 +2204,7 @@ class EdiromConnectedWorkspace extends HTMLElement {
         urlContainer.className = 'invite-type-container';
         inviteTypeLabel = document.createElement('div');
         inviteTypeLabel.className = 'invite-type-label';
-        inviteTypeLabel.textContent = 'URL';
+        inviteTypeLabel.textContent = this._t('invite.url');
         urlContainer.appendChild(inviteTypeLabel);
         const urlRow = document.createElement('div');
         urlRow.className = 'url-row';
@@ -2022,11 +2219,11 @@ class EdiromConnectedWorkspace extends HTMLElement {
 
         const copyTooltip = document.createElement('span');
         copyTooltip.className = 'copy-tooltip';
-        copyTooltip.textContent = 'Kopiert!';
+        copyTooltip.textContent = this._t('invite.copied');
 
         const copyBtn = document.createElement('button');
         copyBtn.className = 'icon-button';
-        copyBtn.setAttribute('aria-label', 'URL kopieren');
+        copyBtn.setAttribute('aria-label', this._t('invite.copyUrl'));
         const copyIcon = document.createElement('edirom-icon');
         copyIcon.setAttribute('name', 'content_copy');
         copyIcon.setAttribute('size', 'fill');
@@ -2050,7 +2247,7 @@ class EdiromConnectedWorkspace extends HTMLElement {
         // Share button — hidden on devices/browsers that don't support the Web Share API
         const shareBtn = document.createElement('button');
         shareBtn.className = 'icon-button';
-        shareBtn.setAttribute('aria-label', 'Teilen');
+        shareBtn.setAttribute('aria-label', this._t('invite.share'));
         const shareIcon = document.createElement('edirom-icon');
         shareIcon.setAttribute('name', 'share');
         shareIcon.setAttribute('size', 'fill');
@@ -2086,7 +2283,7 @@ class EdiromConnectedWorkspace extends HTMLElement {
 
         const inputLabel = document.createElement('p');
         inputLabel.className = 'join-input-label';
-        inputLabel.textContent = 'Sitzungs-ID eingeben:';
+        inputLabel.textContent = this._t('join.enterSessionId');
 
         const input = document.createElement('input');
         input.type = 'text';
@@ -2152,7 +2349,7 @@ class EdiromConnectedWorkspace extends HTMLElement {
             if (isOwn) {
                 const editBtn = document.createElement('button');
                 editBtn.className = 'icon-button';
-                editBtn.setAttribute('aria-label', 'Namen bearbeiten');
+                editBtn.setAttribute('aria-label', this._t('member.editName'));
                 const editIcon = document.createElement('edirom-icon');
                 editIcon.setAttribute('name', 'edit');
                 editIcon.setAttribute('size', 'fill');
@@ -2190,14 +2387,14 @@ class EdiromConnectedWorkspace extends HTMLElement {
 
             const removeBtn = document.createElement('button');
             removeBtn.className = 'icon-button';
-            removeBtn.setAttribute('aria-label', 'Gerät entfernen');
+            removeBtn.setAttribute('aria-label', this._t('member.remove'));
             const removeIcon = document.createElement('edirom-icon');
             removeIcon.setAttribute('name', 'close');
             removeIcon.setAttribute('size', 'fill');
             removeBtn.appendChild(removeIcon);
             removeBtn.addEventListener('click', () => {
-                const deviceName = member.metadata?.name || 'Unbekanntes Gerät';
-                const shouldRemove = window.confirm(`Möchten Sie das Gerät "${deviceName}" wirklich entfernen?`);
+                const deviceName = member.metadata?.name || this._t('member.unknown');
+                const shouldRemove = window.confirm(this._t('member.removeConfirm', { name: deviceName }));
                 if (shouldRemove) {
                     this._sendRemoveClient(member.id);
                 }
