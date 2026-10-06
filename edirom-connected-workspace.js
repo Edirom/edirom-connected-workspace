@@ -32,9 +32,16 @@ const TRANSLATIONS = {
         'button.back': 'Back',
         'button.close': 'Close',
 
+        // Device (name, type)
+        'device.editName': 'Edit device name',
+        'device.type.mobile': 'Smartphone',
+        'device.type.tablet': 'Tablet',
+        'device.type.desktop': 'Computer',
+        'device.type.tv': 'TV',
+        'device.type.unknown': 'Unknown device type',
+
         // Start page
         'initial.deviceName': 'Device name:',
-        'initial.editDeviceName': 'Edit device name',
         'initial.createSession': 'Create session',
         'initial.joinSession': 'Join session',
         'initial.intro': 'The Connected Workspace lets you use the digital edition on several devices at the same time.',
@@ -52,7 +59,6 @@ const TRANSLATIONS = {
         'session.dissolveConfirm': 'Do you really want to dissolve this session?',
 
         // Members list
-        'member.editName': 'Edit name',
         'member.remove': 'Remove device',
         'member.removeConfirm': 'Do you really want to remove the device "{name}"?',
         'member.unknown': 'Unknown device',
@@ -94,9 +100,16 @@ const TRANSLATIONS = {
         'button.back': 'Zurück',
         'button.close': 'Schließen',
 
+        // Device (name, type)
+        'device.editName': 'Gerätename bearbeiten',
+        'device.type.mobile': 'Smartphone',
+        'device.type.tablet': 'Tablet',
+        'device.type.desktop': 'Computer',
+        'device.type.tv': 'Fernseher',
+        'device.type.unknown': 'Unbekannter Gerätetyp',
+
         // Start page
         'initial.deviceName': 'Gerätename:',
-        'initial.editDeviceName': 'Gerätename bearbeiten',
         'initial.createSession': 'Sitzung erstellen',
         'initial.joinSession': 'Sitzung beitreten',
         'initial.intro': 'Mit der vernetzten Arbeitsumgebung können Sie die digitale Edition auf mehreren Geräten gleichzeitig nutzen.',
@@ -114,7 +127,6 @@ const TRANSLATIONS = {
         'session.dissolveConfirm': 'Möchten Sie diese Sitzung wirklich auflösen?',
 
         // Members list
-        'member.editName': 'Namen bearbeiten',
         'member.remove': 'Gerät entfernen',
         'member.removeConfirm': 'Möchten Sie das Gerät "{name}" wirklich entfernen?',
         'member.unknown': 'Unbekanntes Gerät',
@@ -901,7 +913,7 @@ const componentTemplate = `
     }
 </style>
 <div id="ws-container">
-    <button id="ws-button" data-i18n-aria-label="button.open">
+    <button id="ws-button" data-i18n-label="button.open">
         <edirom-icon name="hub" size="fill"></edirom-icon>
     </button>
     <div id="session-popover" popover="manual">
@@ -912,10 +924,10 @@ const componentTemplate = `
             </div>
             <div id="session-content"></div>
             <div id="bottom-row">
-                <button id="back-button" class="hidden" data-i18n-aria-label="button.back">
+                <button id="back-button" class="hidden" data-i18n-label="button.back">
                     <edirom-icon name="arrow_back" size="fill"></edirom-icon>
                 </button>
-                <button id="close-button" data-i18n-aria-label="button.close">
+                <button id="close-button" data-i18n-label="button.close">
                     <edirom-icon name="close" size="fill"></edirom-icon>
                 </button>
             </div>
@@ -924,6 +936,16 @@ const componentTemplate = `
     <div id="notification-host" popover="manual"></div>
 </div>
 `;
+
+// Device types as reported by the server (`deviceType` of a member), with the
+// icon shown in the members list and the translation key of the hover label.
+const DEVICE_TYPES = {
+    mobile:  { icon: 'smartphone',  labelKey: 'device.type.mobile' },
+    tablet:  { icon: 'tablet_mac',  labelKey: 'device.type.tablet' },
+    desktop: { icon: 'laptop_mac',  labelKey: 'device.type.desktop' },
+    tv:      { icon: 'tv_gen',      labelKey: 'device.type.tv' },
+    unknown: { icon: 'mobile_question', labelKey: 'device.type.unknown' },
+};
 
 const CONNECTION_STATE_COLORS = {
     failed: 'red',
@@ -1122,6 +1144,16 @@ class EdiromConnectedWorkspace extends HTMLElement {
     _t = (key, params) => translate(this._lang, key, params);
 
     /**
+     * Gives an icon-only element its translated accessible name (`aria-label`)
+     * and a hover tooltip (`title`) — both from the same text.
+     */
+    _setLabel = (el, key) => {
+        const text = this._t(key);
+        el.setAttribute('aria-label', text);
+        el.title = text;
+    }
+
+    /**
      * Applies the `lang` attribute value. Unsupported values fall back to the
      * default language. Re-renders what is currently shown.
      */
@@ -1136,13 +1168,16 @@ class EdiromConnectedWorkspace extends HTMLElement {
         }
     }
 
-    /** Fills the template's static texts: `data-i18n` (text) and `data-i18n-aria-label`. */
+    /**
+     * Fills the template's static texts: `data-i18n` (text content) and
+     * `data-i18n-label` (accessible name + hover tooltip of icon-only elements).
+     */
     _translateStaticElements = () => {
         this.shadow.querySelectorAll('[data-i18n]').forEach((el) => {
             el.textContent = this._t(el.dataset.i18n);
         });
-        this.shadow.querySelectorAll('[data-i18n-aria-label]').forEach((el) => {
-            el.setAttribute('aria-label', this._t(el.dataset.i18nAriaLabel));
+        this.shadow.querySelectorAll('[data-i18n-label]').forEach((el) => {
+            this._setLabel(el, el.dataset.i18nLabel);
         });
     }
 
@@ -1999,11 +2034,12 @@ class EdiromConnectedWorkspace extends HTMLElement {
 
         const nameSpan = document.createElement('span');
         nameSpan.className = 'device-name-text';
+        nameSpan.title = this._t('device.editName');
         nameSpan.textContent = this.deviceName || '';
 
         const editButton = document.createElement('button');
         editButton.className = 'icon-button';
-        editButton.setAttribute('aria-label', this._t('initial.editDeviceName'));
+        this._setLabel(editButton, 'device.editName');
         const editIcon = document.createElement('edirom-icon');
         editIcon.setAttribute('name', 'edit');
         editIcon.setAttribute('size', 'fill');
@@ -2223,7 +2259,7 @@ class EdiromConnectedWorkspace extends HTMLElement {
 
         const copyBtn = document.createElement('button');
         copyBtn.className = 'icon-button';
-        copyBtn.setAttribute('aria-label', this._t('invite.copyUrl'));
+        this._setLabel(copyBtn, 'invite.copyUrl');
         const copyIcon = document.createElement('edirom-icon');
         copyIcon.setAttribute('name', 'content_copy');
         copyIcon.setAttribute('size', 'fill');
@@ -2247,7 +2283,7 @@ class EdiromConnectedWorkspace extends HTMLElement {
         // Share button — hidden on devices/browsers that don't support the Web Share API
         const shareBtn = document.createElement('button');
         shareBtn.className = 'icon-button';
-        shareBtn.setAttribute('aria-label', this._t('invite.share'));
+        this._setLabel(shareBtn, 'invite.share');
         const shareIcon = document.createElement('edirom-icon');
         shareIcon.setAttribute('name', 'share');
         shareIcon.setAttribute('size', 'fill');
@@ -2327,9 +2363,10 @@ class EdiromConnectedWorkspace extends HTMLElement {
             const iconCol = document.createElement('div');
             iconCol.className = 'member-icon';
             const deviceIcon = document.createElement('edirom-icon');
-            const dt = member.metadata?.deviceType ?? '';
-            const iconName = dt === 'tablet' ? 'tablet_mac' : dt === 'mobile' ? 'smartphone' : dt === 'desktop' ? 'laptop_mac' : dt === 'tv' ? 'tv_gen' : 'mobile_question';
-            deviceIcon.setAttribute('name', iconName);
+            const reportedType = member.metadata?.deviceType;
+            const deviceType = Object.hasOwn(DEVICE_TYPES, reportedType) ? DEVICE_TYPES[reportedType] : DEVICE_TYPES.unknown;
+            deviceIcon.setAttribute('name', deviceType.icon);
+            iconCol.title = this._t(deviceType.labelKey);
             deviceIcon.setAttribute('size', 'fill');
             iconCol.appendChild(deviceIcon);
             row.appendChild(iconCol);
@@ -2349,7 +2386,7 @@ class EdiromConnectedWorkspace extends HTMLElement {
             if (isOwn) {
                 const editBtn = document.createElement('button');
                 editBtn.className = 'icon-button';
-                editBtn.setAttribute('aria-label', this._t('member.editName'));
+                this._setLabel(editBtn, 'device.editName');
                 const editIcon = document.createElement('edirom-icon');
                 editIcon.setAttribute('name', 'edit');
                 editIcon.setAttribute('size', 'fill');
@@ -2387,7 +2424,7 @@ class EdiromConnectedWorkspace extends HTMLElement {
 
             const removeBtn = document.createElement('button');
             removeBtn.className = 'icon-button';
-            removeBtn.setAttribute('aria-label', this._t('member.remove'));
+            this._setLabel(removeBtn, 'member.remove');
             const removeIcon = document.createElement('edirom-icon');
             removeIcon.setAttribute('name', 'close');
             removeIcon.setAttribute('size', 'fill');
