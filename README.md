@@ -1,8 +1,10 @@
 # Edirom Connected Workspace
 
-Web component for connecting multiple devices in a shared session via WebSocket: session creation, joining via ID or QR code, device management, cross-device messaging, and a synced per-client state.
+Web component for connecting multiple devices in a shared session via WebSocket: session creation, joining via ID or QR code, device management, and a synced per-client state.
 
 ## Usage
+
+Expects `edirom-core-web-components` as a sibling directory (it provides `edirom-icon`).
 
 ```html
 <script defer src="path/to/edirom-connected-workspace/edirom-connected-workspace.js" type="module"></script>
@@ -29,13 +31,11 @@ Web component for connecting multiple devices in a shared session via WebSocket:
 | Event | Detail | Description |
 |---|---|---|
 | `session-joined` | `{ sessionId, isCreatingSession }` | This client created or joined a session. |
-| `received-message` | `object` | A message with a `type` other than `syncState` was received. `detail` is the parsed JSON message. |
 
 ## Methods
 
 | Method | Description |
 |---|---|
-| `sendMessage(type, payload?)` | Sends `{ type, payload }` to the other clients in the session. |
 | `registerStateHandler({ keys, get, apply })` | Registers the host app's handler for a group of session-state keys. Returns a function that unregisters it. See below. |
 | `updateState(patch)` | Reports that (part of) this client's state changed locally, e.g. `updateState({ connection: 'xyz' })`. See below. |
 
@@ -136,8 +136,9 @@ edirom-connected-workspace {
 
 ## Dependencies
 
-Vendor libraries are injected into the host `<head>` automatically — no separate `<script>` tags needed.
+- **[`edirom-icon`](https://github.com/Edirom/edirom-core-web-components)** — icon rendering. Imported as `../edirom-core-web-components/src/edirom-icon.js`, so it must be present next to this component.
 
-- **[`edirom-icon`](https://github.com/Edirom/edirom-core-web-components)** — icon rendering.
+Bowser and qrcode-generator are injected into the host `<head>` automatically — no separate `<script>` tags needed.
+
 - [Bowser](https://github.com/lancedikson/bowser) — browser/OS detection (`vendor/bowser-es5.js`).
 - [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) — QR code generation (`vendor/qrcode.js`).
