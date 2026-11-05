@@ -207,7 +207,7 @@ const componentTemplate = `
         height: 100%;
         --_ws-primary: var(--primary-color, #000000);
         --_ws-secondary: var(--secondary-color, #cacaca);
-        --_ws-tertiary: var(--tertiary-color, #faf6f0);
+        --_ws-tertiary: var(--tertiary-color, #ffffff);
         --_ws-quaternary: var(--quaternary-color, var(--_ws-secondary));
     }
 
@@ -428,7 +428,7 @@ const componentTemplate = `
 
     #session-content hr {
         border: none;
-        border-top: 1px solid rgba(35, 42, 68, 0.2);
+        border-top: 1px solid color-mix(in oklch, var(--_ws-primary) 20%, transparent);
         margin: 12px 0;
     }
 
@@ -463,7 +463,7 @@ const componentTemplate = `
         align-items: center;
         gap: 8px;
         padding: 6px 0;
-        border-bottom: 1px solid rgba(35, 42, 68, 0.1);
+        border-bottom: 1px solid color-mix(in oklch, var(--_ws-primary) 10%, transparent);
     }
 
     .member-icon {

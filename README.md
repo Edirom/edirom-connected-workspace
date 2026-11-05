@@ -139,7 +139,7 @@ Themed via CSS custom properties, overridable on the element or any ancestor:
 |---|---|---|
 | `--primary-color` | `#000000` | Primary text and icon color |
 | `--secondary-color` | `#cacaca` | Background of headers, buttons and interactive elements |
-| `--tertiary-color` | `#faf6f0` | Background of the content area |
+| `--tertiary-color` | `#ffffff` | Background of the content area |
 | `--quaternary-color` | `--secondary-color` | Color of the disconnected status icon |
 
 ```css
