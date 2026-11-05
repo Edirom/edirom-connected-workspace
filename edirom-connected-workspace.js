@@ -23,6 +23,9 @@ const _COMPONENT_BASE = (() => {
 
 const DEFAULT_LANGUAGE = 'en';
 
+// sessionStorage key for this tab's place in a session (see "Session resume").
+const STORAGE_KEY = 'edirom-connected-workspace:session';
+
 const TRANSLATIONS = {
 
     en: {
@@ -39,6 +42,7 @@ const TRANSLATIONS = {
         'device.type.desktop': 'Computer',
         'device.type.tv': 'TV',
         'device.type.unknown': 'Unknown device type',
+        'member.reconnecting': 'Reconnecting…',
 
         // Start page
         'initial.deviceName': 'Device name:',
@@ -107,6 +111,7 @@ const TRANSLATIONS = {
         'device.type.desktop': 'Computer',
         'device.type.tv': 'Fernseher',
         'device.type.unknown': 'Unbekannter Gerätetyp',
+        'member.reconnecting': 'Verbindung wird wiederhergestellt …',
 
         // Start page
         'initial.deviceName': 'Gerätename:',
@@ -480,6 +485,18 @@ const componentTemplate = `
         text-overflow: ellipsis;
         white-space: nowrap;
         min-width: 0;
+    }
+
+    .member-row.reconnecting .member-icon,
+    .member-row.reconnecting .member-name {
+        opacity: 0.5;
+    }
+
+    .member-status {
+        font-size: 0.75rem;
+        font-style: italic;
+        opacity: 0.7;
+        margin-left: 6px;
     }
 
     .member-name-input {
@@ -982,6 +999,12 @@ class EdiromConnectedWorkspace extends HTMLElement {
         this._isCreatingSession = false;
         this._browserReady = false;
         this._pendingAutoJoinSessionId = null;
+        // Resuming a session after a page reload (see "Session resume" below).
+        this._joiningSessionId = null;      // session the socket currently being opened is for
+        this._silentResume = false;         // the pending join was not asked for by the host or user
+        this._joinIsSilentResume = false;   // ... and this is the connection attempt it applies to
+        this._storedResumeChecked = false;
+        this._pageHiding = false;
 
         // State sync (see "Session State" section below). This is protocol
         // bookkeeping only — the actual values live in the host app.
@@ -1047,6 +1070,11 @@ class EdiromConnectedWorkspace extends HTMLElement {
         return EdiromConnectedWorkspace[cacheKey];
     }
 
+    /** ID of the session this client is currently in, or null. */
+    get sessionId() {
+        return this._connectionState === 'session' ? this._sessionId : null;
+    }
+
     static get observedAttributes() {
         return ['ws-url', 'session', 'invite-url', 'lang'];
     }
@@ -1065,6 +1093,8 @@ class EdiromConnectedWorkspace extends HTMLElement {
         this._tryAutoJoin();
         this.setAttribute('data-handles-back-request', '');
         this.addEventListener('back-request', this._handleBackRequest);
+        window.addEventListener('pagehide', this._handlePageHide);
+        window.addEventListener('pageshow', this._handlePageShow);
 
         // Load bowser from the component's own vendor directory (injected into
         // the host <head> if not already present). Once ready, initialise
@@ -1092,6 +1122,8 @@ class EdiromConnectedWorkspace extends HTMLElement {
     disconnectedCallback() {
         console.log('EdiromConnectedWorkspace disconnected!');
         this.removeEventListener('back-request', this._handleBackRequest);
+        window.removeEventListener('pagehide', this._handlePageHide);
+        window.removeEventListener('pageshow', this._handlePageShow);
         document.removeEventListener('keydown', this._handleDocumentKeydown);
         document.removeEventListener('click', this._handleDocumentClick, true);
         if (this._webSocket) {
@@ -1358,6 +1390,9 @@ class EdiromConnectedWorkspace extends HTMLElement {
         }
 
         if (this._webSocket) {
+            // Moving on from a session on purpose is leaving it: say so, so the server
+            // doesn't hold this member's place for a page that is not coming back.
+            if (this._connectionState === 'session' && this._clientId) this._sendRemoveClient(this._clientId);
             this._webSocket.onclose = null;
             this._webSocket.close();
         }
@@ -1367,10 +1402,16 @@ class EdiromConnectedWorkspace extends HTMLElement {
         this._sessionData = null;
         this._resetStateSync();
 
+        // This connection attempt is a silent resume if that's what asked for it.
+        this._joinIsSilentResume = this._silentResume;
+        this._silentResume = false;
+        this._joiningSessionId = sessionId;
+
         const url = protocol.buildConnectUrl(this.wsUrl, {
             clientName: this.deviceName,
             deviceType: this.getDeviceType(),
-            sessionId
+            sessionId,
+            resumeToken: sessionId ? this._readStoredSession(sessionId)?.resumeToken : undefined
         });
         this._webSocket = new WebSocket(url);
 
@@ -1381,9 +1422,15 @@ class EdiromConnectedWorkspace extends HTMLElement {
 
         this._webSocket.onclose = () => {
             console.log('EdiromConnectedWorkspace: connection closed.');
+            // The page is going away (reload, switch between Desktop and Mobile): the
+            // server keeps this client's place, and nothing here is worth showing.
+            if (this._pageHiding) return;
             const wasInSession = this._connectionState === 'session';
             const reason = this._disconnectReason;
             this._disconnectReason = null;
+            this._joiningSessionId = null;
+            // Left, kicked, dissolved or server gone: there is nothing to come back to.
+            if (reason !== null) this._clearStoredSession();
             if (wasInSession) {
                 if (reason === 'dissolved') this._showNotification(this._t('notify.sessionDissolved'), 'yellow');
                 else if (reason === 'removed') this._showNotification(this._t('notify.removed'), 'yellow');
@@ -1469,12 +1516,90 @@ class EdiromConnectedWorkspace extends HTMLElement {
      * been initialised — otherwise the client connects with an empty name.
      */
     _tryAutoJoin = () => {
-        if (!this._pendingAutoJoinSessionId) return;
         if (!this._initialCheckPromise || !this._browserReady) return;
+        if (!this._pendingAutoJoinSessionId && !this._storedResumeChecked) {
+            // The host asked for no session: take over the place a previous page of
+            // this tab (before a reload or a Desktop/Mobile switch) kept in one.
+            this._storedResumeChecked = true;
+            const stored = this._readStoredSession();
+            if (stored) {
+                this._pendingAutoJoinSessionId = stored.sessionId;
+                this._silentResume = true;
+            }
+        }
+        if (!this._pendingAutoJoinSessionId) return;
         const sessionId = this._pendingAutoJoinSessionId;
         this._pendingAutoJoinSessionId = null;
-        this._autoJoined = true;
+        // Already in (or on the way into) this session, e.g. the host names the
+        // session a moment after it was resumed from storage.
+        if (sessionId === this._joiningSessionId || sessionId === this._sessionId) {
+            this._silentResume = false;
+            return;
+        }
+        // Silent resumes stay in the background; a join the host/user asked for opens the popover.
+        if (!this._silentResume) this._autoJoined = true;
         this._initialCheckPromise.then(() => this._joinSession(sessionId));
+    }
+
+    // -------------------------------------------------------------------------
+    // Session resume
+    //
+    // A page reload, or a switch between the Desktop and Mobile UI, closes the
+    // WebSocket. The server keeps this member's place for a short grace period
+    // (shown to the others as "reconnecting", see ws-protocol.js), and the new
+    // page takes it over with the `resumeToken` from `sessionJoined`. The token
+    // lives in sessionStorage: it is private to the tab and survives same-origin
+    // navigations — exactly the lifetime of "this tab's place in the session".
+    // -------------------------------------------------------------------------
+
+    _readStoredSession = (forSessionId) => {
+        try {
+            const stored = JSON.parse(window.sessionStorage.getItem(STORAGE_KEY));
+            if (!stored || typeof stored.sessionId !== 'string' || typeof stored.resumeToken !== 'string') return null;
+            if (forSessionId && stored.sessionId !== forSessionId) return null;
+            return stored;
+        } catch (e) {
+            return null; // storage blocked or corrupt — resuming is a convenience, never required
+        }
+    }
+
+    _storeSession = (sessionId, resumeToken) => {
+        try {
+            if (resumeToken) window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ sessionId, resumeToken }));
+        } catch (e) { /* see _readStoredSession */ }
+    }
+
+    _clearStoredSession = () => {
+        try {
+            window.sessionStorage.removeItem(STORAGE_KEY);
+        } catch (e) { /* see _readStoredSession */ }
+    }
+
+    // The page is being unloaded or put into the browser's back/forward cache. A page in that
+    // cache stays alive, so its socket would stay open: the server would still count this
+    // member as connected while the next page asks to take its place. Closing it here lets the
+    // server hold the place right away (and keeps the page eligible for the cache).
+    _handlePageHide = () => {
+        this._pageHiding = true;
+        if (this._webSocket && this._webSocket.readyState <= WebSocket.OPEN) this._webSocket.close();
+    }
+
+    // Fires on every page load too; it only matters for a page restored from the
+    // back/forward cache, whose socket was closed in _handlePageHide: take the place back.
+    _handlePageShow = (event) => {
+        if (!this._pageHiding) return;
+        this._pageHiding = false;
+        if (!event.persisted || this._webSocket?.readyState === WebSocket.OPEN) return;
+        // What the page remembers about its session is from before it was frozen.
+        this._clientId = null;
+        this._sessionId = null;
+        this._sessionData = null;
+        this._joiningSessionId = null;
+        this._resetStateSync();
+        this._storedResumeChecked = false;
+        this._setConnectionState('checking');
+        this._initialCheckPromise = this._runAvailabilityCheck();
+        this._tryAutoJoin();
     }
 
     _sendRemoveClient = (clientId) => {
@@ -1515,27 +1640,38 @@ class EdiromConnectedWorkspace extends HTMLElement {
             this._clientId = dataJson.clientId;
             this._sessionId = dataJson.sessionId;
             this._sessionData = dataJson.sessionData;
+            this._storeSession(dataJson.sessionId, dataJson.resumeToken);
             this._setConnectionState('session');
             this._pageHistory = [];
             this._switchPage('sessionInformation', { pushHistory: false });
-            const joinMsg = this._t(this._isCreatingSession ? 'notify.sessionCreated' : 'notify.joined');
-            this._showNotification(joinMsg, 'green');
+            // A resumed member never really left, so there is nothing to announce.
+            if (!dataJson.resumed) {
+                const joinMsg = this._t(this._isCreatingSession ? 'notify.sessionCreated' : 'notify.joined');
+                this._showNotification(joinMsg, 'green');
+            }
             if (this._autoJoined) {
                 this._autoJoined = false;
-                this._openPopover();
+                // Not after a reload: the user is just continuing what they were doing.
+                if (!dataJson.resumed) this._openPopover();
             }
             this._startStateSync(this._isCreatingSession);
             this.dispatchEvent(new CustomEvent('session-joined', {
                 detail: {
                     sessionId: dataJson.sessionId,
-                    isCreatingSession: this._isCreatingSession
+                    isCreatingSession: this._isCreatingSession,
+                    resumed: dataJson.resumed === true
                 },
                 bubbles: true,
                 composed: true
             }));
         } else if (protocol.matches(dataJson, 'error') && dataJson.reason === protocol.ERROR_REASONS.sessionNotFound) {
-            this._joinError = true;
-            this._showNotification(this._t('notify.sessionNotFound'), 'red');
+            this._clearStoredSession();
+            // A silent resume that finds the session gone (it ended while the page was
+            // away) just continues without a session: the user never asked to join one.
+            if (!this._joinIsSilentResume) {
+                this._joinError = true;
+                this._showNotification(this._t('notify.sessionNotFound'), 'red');
+            }
         } else if (protocol.matches(dataJson, 'error') && dataJson.reason === protocol.ERROR_REASONS.sessionFull) {
             this._joinError = true; // like sessionNotFound: bring the user back to the join page
             this._showNotification(this._t('notify.sessionFull'), 'red');
@@ -2356,8 +2492,9 @@ class EdiromConnectedWorkspace extends HTMLElement {
 
         for (const member of members) {
             const isOwn = member.id === this._clientId;
+            const isReconnecting = member.status === 'reconnecting';
             const row = document.createElement('div');
-            row.className = 'member-row';
+            row.className = isReconnecting ? 'member-row reconnecting' : 'member-row';
 
             // Col 1: device icon
             const iconCol = document.createElement('div');
@@ -2377,6 +2514,12 @@ class EdiromConnectedWorkspace extends HTMLElement {
             const nameSpan = document.createElement('span');
             nameSpan.textContent = member.metadata?.name ?? '—';
             nameCol.appendChild(nameSpan);
+            if (isReconnecting) {
+                const statusSpan = document.createElement('span');
+                statusSpan.className = 'member-status';
+                statusSpan.textContent = this._t('member.reconnecting');
+                nameCol.appendChild(statusSpan);
+            }
             row.appendChild(nameCol);
 
             // Col 3: action buttons
@@ -2422,8 +2565,10 @@ class EdiromConnectedWorkspace extends HTMLElement {
                 actionsCol.appendChild(editBtn);
             }
 
+            // A member that is only reconnecting has no connection to remove; it either comes back or expires.
             const removeBtn = document.createElement('button');
             removeBtn.className = 'icon-button';
+            removeBtn.hidden = isReconnecting;
             this._setLabel(removeBtn, 'member.remove');
             const removeIcon = document.createElement('edirom-icon');
             removeIcon.setAttribute('name', 'close');

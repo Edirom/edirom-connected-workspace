@@ -22,7 +22,7 @@ Expects `edirom-core-web-components` as a sibling directory (it provides `edirom
 | Attribute | Type | Description |
 |---|---|---|
 | `ws-url` | string | WebSocket server URL. Required for connection. |
-| `session` | string | Session ID to auto-join on connect. When set, the component automatically joins the given session and opens the popover. |
+| `session` | string | Session ID to auto-join on connect. When set, the component automatically joins the given session and opens the popover. Without it the component still takes its tab's place in a session back after a page reload (see "Page reloads"). |
 | `invite-url` | string | Base URL used to generate invite links and QR codes. Combined with the current session ID. |
 | `lang` | `en` \| `de` | Language of the UI. Defaults to `en`; unsupported values also fall back to `en`. Can be changed at any time — the open page is re-rendered. Already shown notifications keep their language. |
 
@@ -30,7 +30,7 @@ Expects `edirom-core-web-components` as a sibling directory (it provides `edirom
 
 | Event | Detail | Description |
 |---|---|---|
-| `session-joined` | `{ sessionId, isCreatingSession }` | This client created or joined a session. |
+| `session-joined` | `{ sessionId, isCreatingSession, resumed }` | This client created or joined a session, or (`resumed: true`) took its place back after a page reload. |
 
 ## Methods
 
@@ -38,6 +38,21 @@ Expects `edirom-core-web-components` as a sibling directory (it provides `edirom
 |---|---|
 | `registerStateHandler({ keys, get, apply })` | Registers the host app's handler for a group of session-state keys. Returns a function that unregisters it. See below. |
 | `updateState(patch)` | Reports that (part of) this client's state changed locally, e.g. `updateState({ connection: 'xyz' })`. See below. |
+
+| Property | Description |
+|---|---|
+| `sessionId` | Read-only. ID of the session this client is in, or `null`. Hosts add it to the URL when they navigate away themselves (e.g. `?session=ABC123`). |
+
+## Page reloads
+
+A reload, or a switch between two UIs of the same application (Desktop ⇄ Mobile), closes the WebSocket. Without help that means leaving the session and joining it again: everyone sees "left" and "joined", and a session with a single member would be gone for a moment.
+
+Instead, the server keeps a member's place for a short grace period (default 10 s, `RECONNECT_GRACE_MS`) whenever its socket drops without it having left on purpose. The other members see the device as *reconnecting* — no notification. The new page takes the place back with a `resumeToken`:
+
+- The token is handed out in `sessionJoined`, kept in `sessionStorage` (private to the tab, survives same-origin navigations) and sent with the `sessionId` on the next connection. The host app doesn't have to do anything.
+- If the member doesn't return in time, the others get the usual "left" notification.
+- Leaving, being removed or dissolving the session happens immediately, without a grace period.
+- A connection without a valid token (new tab, expired, used up) simply joins as a new member, so adding `?session=…` to a URL is a harmless fallback when `sessionStorage` is blocked.
 
 ## Session state
 
@@ -82,6 +97,7 @@ The WebSocket upgrade URL carries these query parameters (see `CONNECT_PARAMS`, 
 | `sessionId` | join an existing session (case-insensitive, 6-character code). Omit to create a new session. |
 | `clientName` | display name for this client. The server strips control characters and truncates to 64 characters (also on `updateClientName`). |
 | `deviceType` | free-form device label (server strips control characters and truncates to 32 characters). |
+| `resumeToken` | optional, together with `sessionId`: the token from this tab's last `sessionJoined`. If the server holds that member's place (see "Page reloads"), the connection takes it over instead of joining as a new member. Anything else is not an error — it joins normally. |
 
 `buildConnectUrl` and `buildPingUrl` add `protocolVersion` automatically.
 
@@ -89,10 +105,10 @@ The WebSocket upgrade URL carries these query parameters (see `CONNECT_PARAMS`, 
 
 | message | shape | when |
 |---|---|---|
-| `sessionJoined` | `{ response, sessionId, clientId, sessionData }` | right after this client creates or joins a session |
+| `sessionJoined` | `{ response, sessionId, clientId, sessionData, resumeToken, resumed }` | right after this client creates or joins a session. `resumeToken` is private to this client and renewed on every connection. `resumed` is true if the client took its place back after a reload — then nobody was told it left, and the initial `syncState` carries the state held for it meanwhile |
 | `clientConnected` | `{ response, clientData, sessionData }` | another member joined |
-| `clientDisconnected` | `{ response, clientData, sessionData }` | another member left |
-| `sessionDataUpdated` | `{ response, sessionData }` | another member renamed itself |
+| `clientDisconnected` | `{ response, clientData, sessionData }` | another member left (including: did not come back within the grace period) |
+| `sessionDataUpdated` | `{ response, sessionData }` | another member renamed itself, or its `status` changed (`connected` ⇄ `reconnecting`) |
 | `clientRemoved` | `{ response }` | this client was kicked; the socket is closed right after |
 | `sessionDissolved` | `{ response }` | the session ended; the socket is closed right after |
 | `serverShutdown` | `{ response }` | the server process itself is shutting down (restart/deploy, or a last-resort crash recovery); the socket is closed right after |
@@ -100,7 +116,7 @@ The WebSocket upgrade URL carries these query parameters (see `CONNECT_PARAMS`, 
 | `pong` | `{ response }` | reply to a `ping=true` health check |
 | `syncState` | `{ type, payload: { patch } }` | a shared-state change (see "Session state" above). Always sent once to a joiner, possibly with an empty `patch` |
 
-`sessionData` is always `{ sessionMembers: [{ id, metadata: { name, deviceType } }, ...] }`. `clientData` is always `{ id, metadata: { name, deviceType } }`.
+`sessionData` is always `{ sessionMembers: [{ id, metadata: { name, deviceType }, status }, ...] }`; `status` is `connected` or `reconnecting` (`MEMBER_STATUS`). `clientData` is always `{ id, metadata: { name, deviceType } }`.
 
 ### Client → server messages
 

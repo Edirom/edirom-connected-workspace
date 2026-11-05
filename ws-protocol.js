@@ -18,23 +18,29 @@
 // newer server (or vice versa) misunderstand each other. The server rejects
 // any connection whose `protocolVersion` differs (see ERROR_REASONS.protocolMismatch),
 // including one that sends none.
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 export const CONNECT_PARAMS = {
     ping: 'ping',
     sessionId: 'sessionId',
     clientName: 'clientName',
     deviceType: 'deviceType',
-    protocolVersion: 'protocolVersion'
+    protocolVersion: 'protocolVersion',
+    // Secret handed out in `sessionJoined`. Sent together with `sessionId` after a
+    // page reload to take over the place the previous page of this tab kept in
+    // the session (see RECONNECTING below). An unknown/expired token is not an
+    // error — the connection simply joins as a new member.
+    resumeToken: 'resumeToken'
 };
 
-export function buildConnectUrl(wsUrl, { clientName, deviceType, sessionId } = {}) {
+export function buildConnectUrl(wsUrl, { clientName, deviceType, sessionId, resumeToken } = {}) {
     const params = new URLSearchParams({
         [CONNECT_PARAMS.protocolVersion]: PROTOCOL_VERSION,
         [CONNECT_PARAMS.clientName]: clientName,
         [CONNECT_PARAMS.deviceType]: deviceType
     });
     if (sessionId) params.set(CONNECT_PARAMS.sessionId, sessionId);
+    if (sessionId && resumeToken) params.set(CONNECT_PARAMS.resumeToken, resumeToken);
     return `${wsUrl}?${params.toString()}`;
 }
 
@@ -53,9 +59,15 @@ export function buildPingUrl(wsUrl) {
 
 export const MESSAGES_TO_CLIENT = {
     // Sent right after this client creates or joins a session.
+    // `resumeToken` is private to this client (never part of sessionData) and
+    // is replaced by a fresh one on every connection. `resumed` is true when
+    // the client took over its previous place after a page reload: nobody else
+    // was told it left. The initial `syncState` that follows carries the state
+    // the server held for this member meanwhile (only values that were ever
+    // set, so a member that never reported anything is not reset to defaults).
     sessionJoined: {
         channel: 'response',
-        build: ({ sessionId, clientId, sessionData }) => ({ response: 'sessionJoined', sessionId, clientId, sessionData })
+        build: ({ sessionId, clientId, sessionData, resumeToken, resumed = false }) => ({ response: 'sessionJoined', sessionId, clientId, sessionData, resumeToken, resumed })
     },
     // Sent to existing members when someone joins.
     clientConnected: {
@@ -67,7 +79,8 @@ export const MESSAGES_TO_CLIENT = {
         channel: 'response',
         build: ({ clientData, sessionData }) => ({ response: 'clientDisconnected', clientData, sessionData })
     },
-    // Sent to other members after a client renames itself.
+    // Sent to other members after a client renames itself, and whenever a
+    // member's `status` changes (see RECONNECTING).
     sessionDataUpdated: {
         channel: 'response',
         build: ({ sessionData }) => ({ response: 'sessionDataUpdated', sessionData })
@@ -157,6 +170,25 @@ export const ERROR_REASONS = {
     serverFull: 'serverFull',
     // The requested session is at its member limit.
     sessionFull: 'sessionFull'
+};
+
+// -----------------------------------------------------------------------
+// RECONNECTING — member status. Every entry of `sessionData.sessionMembers`
+// carries a `status`.
+//
+// When a member's socket drops without that member having left on purpose
+// (page reload, switching between the Desktop and Mobile UI, a network
+// blip), the server keeps their place for a short grace period instead of
+// removing them: `status` becomes 'reconnecting' (announced with
+// sessionDataUpdated, not clientDisconnected). If the member returns with its
+// resumeToken in time, it goes back to 'connected' and nobody sees a
+// leave/join. Otherwise the normal clientDisconnected follows after the
+// grace period.
+// -----------------------------------------------------------------------
+
+export const MEMBER_STATUS = {
+    connected: 'connected',
+    reconnecting: 'reconnecting'
 };
 
 // -----------------------------------------------------------------------
